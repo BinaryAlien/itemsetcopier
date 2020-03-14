@@ -6,7 +6,7 @@ import os
 import re
 import requests
 
-CLIENT_VERSION = '10.3.1' # League of Legends client's current version (might not be up-to-date)
+CLIENT_VERSION = '10.5.1' # League of Legends client's current version (might not be up-to-date)
 
 items_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json').json()
 champions_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json').json()
