@@ -6,23 +6,19 @@ import os
 import re
 import requests
 
-CLIENT_VERSION = '10.5.1' # League of Legends client's current version (might not be up-to-date)
+CLIENT_VERSION = '10.9.1' # League of Legends client's current version (might not be up-to-date)
+
+SET_NAME_MAX_LENGTH = 75
+
+CODE_OK = 0x00
+CODE_ERROR_SET_NAME_MAX_LENGTH = 0x01
+CODE_ERROR_URL = 0x02
+CODE_ERROR_CHAMPION = 0x03
+CODE_ERROR_SERVER = 0x04
+CODE_ERROR_OTHER = 0x05
 
 items_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json').json()
 champions_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json').json()
-
-# ---
-
-mobafire_items_map = {} # Matches a Mobafire item's name to it's corresponding ID
-
-for id_, item_data in items_data['data'].items():
-	# Mobafire's trinkets doesn't have ' (Trinket)' in their name so we remove it
-	# e.g.: 'Warding Totem (Trinket)' [LoL] -> 'Warding Totem' [Mobafire]
-	name = item_data['name'].replace(' (Trinket)', '')
-
-	mobafire_items_map[name] = id_
-
-# ---
 
 def get_champion_id(champion_name):
 	"""
@@ -30,104 +26,65 @@ def get_champion_id(champion_name):
 		Compares the champion's name to it's corresponding database name and ID (case insensitive)
 		Returns 0 if no corresponding champion was found
 	"""
-	if champion_name:
-		for champion in champions_data['data'].values():
-			if champion_name.lower() == champion['id'].lower() or champion_name.lower() == champion['name'].lower():
-				return int(champion['key'])
+
+	if not champion_name:
+		return 0
+
+	champion_name = champion_name.strip().lower()
+
+	for champion in champions_data['data'].values():
+		if champion_name == champion['id'].lower() or champion_name == champion['name'].lower():
+			return int(champion['key'])
 
 	return 0
 
-# ---
-
-class TranslateException(Exception):
-	def __init__(self, message):
-		super().__init__(message)
-
 class Translator(ABC):
-	def __init__(self, set_name, url):
-		self.set_name = set_name # In-game item set name
-		self.url = url # URL of the build to translate
-
-	def _validate_input(self):
-		"""
-			Validates the given inputs and fetches the resource at `url`
-			Will store the response in the `resp` attribute
-			Raises a `TranslateException` if an error occurs
-		"""
-
-		if len(self.set_name) > 75:
-			raise TranslateException("The maximum length of an item set's name is 75 characters")
-
-		self.resp = requests.get(self.url)
-
-		if self.resp.status_code != 200:
-			raise TranslateException("Could not reach {}. Status code: {}".format(self.url, self.resp.status_code))
-
 	@abstractmethod
-	def _translate_build(self):
-		"""
-			Translates the build's data
-			Must store the corresponding champion ID in the `champion_id` attribute
-			Must store the build's item blocks in the `blocks` attribute
-		"""
-
+	def generate_item_set(self, set_name, url):
 		pass
-
-	def generate_item_set(self):
-		"""
-			Generates the corresponding JSON item set's data
-			Will call `_validate_input` and `_translate_build`
-			No input sanitizing is done here
-			Returns the item set as a JSON string
-		"""
-
-		self._validate_input()
-		self._translate_build()
-
-		item_set = {
-			'associatedChampions': [self.champion_id],
-			'associatedMaps': [],
-			'title': self.set_name,
-			'blocks': self.blocks,
-		}
-
-		return json.dumps(item_set)
 
 class MobafireTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?(www\.)?mobafire\.com\/league-of-legends\/build\/[A-Za-z0-9-]+-[0-9]{6}'
 
-	def __init__(self, set_name, url, build_index):
-		super().__init__(set_name, url)
+	def __init__(self):
+		self._mobafire_items_map = {} # Matches a Mobafire item's name to it's corresponding ID
 
-		if build_index is None:
-			build_index = 0
+		for id_, item_data in items_data['data'].items():
+			# Mobafire's trinkets doesn't have ' (Trinket)' in their name so we remove it
+			# e.g.: 'Warding Totem (Trinket)' [LoL] -> 'Warding Totem' [Mobafire]
+			name = item_data['name'].replace(' (Trinket)', '')
 
-		self.build_index = build_index
+			self._mobafire_items_map[name] = id_
 
-	def _validate_input(self):
-		if not re.match(MobafireTranslator.REGEX, self.url):
-			raise TranslateException("Given URL does not match a MOBAfire guide URL")
+	def generate_item_set(self, set_name, url, build_index=0):
+		if len(set_name) > SET_NAME_MAX_LENGTH:
+			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
 
-		super()._validate_input()
+		if not re.match(MobafireTranslator.REGEX, url):
+			return {'code': CODE_ERROR_URL, 'error': "Invalid MOBAfire guide URL"}
 
-	def _translate_build(self):
-		soup = BeautifulSoup(self.resp.text, 'html.parser')
+		resp = requests.get(url)
+
+		if resp.status_code != 200:
+			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given MOBAfire guide's webpage. Server returned status code {}".format(resp.status_code)}
+
+		soup = BeautifulSoup(resp.text, 'html.parser')
 
 		champion_name = soup.find('div', class_='title').find('h3').text
-		self.champion_id = get_champion_id(champion_name)
+		champion_id = get_champion_id(champion_name)
 
-		if self.champion_id == 0:
-			raise TranslateException("Champion not found in database: <{}>".format(champion_name))
+		if champion_id == 0:
+			raise TranslateException("Champion not found in database: '{}'".format(champion_name))
 
 		builds = soup.find_all('div', class_='view-guide__build')
 
-		if self.build_index >= len(builds):
-			self.build_index = 0
+		if build_index >= len(builds):
+			build_index = 0
 
-		self.blocks = []
-		self.outdated_items = set()
+		blocks = []
+		outdated_items = set()
 
-		for block_div in builds[self.build_index].find('div', class_='view-guide__build__items').find('div', class_='collapseBox').find_all('div', class_='view-guide__items'):
+		for block_div in builds[build_index].find('div', class_='view-guide__build__items').find('div', class_='collapseBox').find_all('div', class_='view-guide__items'):
 			block = {}
 			block['type'] = block_div.find('div', class_='view-guide__items__bar').span.text # Name of the block
 			block['showIfSummonerSpell'] = ""
@@ -149,99 +106,108 @@ class MobafireTranslator(Translator):
 					jgl_enchantment = re.search(r'(Warrior|Cinderhulk|Runic Echoes|Bloodrazor)', item_name)
 
 					if jgl_enchantment:
+						"""
+							Here we do some more alchemy because in the League of Legends' items database, enchanted jungle items have their own IDs but are named
+							the same.
+
+							For example, whether it is Skirmisher's Sabre or Stalker's Blade with 'Warrior' enchantment, both of them are named 'Enchantment: Warrior'.
+
+							The only way of getting the right enchanted jungle item is to check from which items the enchanted jungle item was made, that's what
+							we do here with 'from' which is a dict containing information about the items from which it was obtained.
+						"""
+
+						# The jungle item's name (without enchantment)
 						jgl_item_name = jgl_item_name.group()
-						jgl_item_id = mobafire_items_map[jgl_item_name]
 
+						# The jungle item's ID (without enchantment)
+						jgl_item_id = self._mobafire_items_map[jgl_item_name]
+
+						# The jungle item's name (with corresponding enchantment)
 						jgl_enchantment = 'Enchantment: ' + jgl_enchantment.group()
-
-						"""
-							Jungle enchantments are treated differently because in the League of Legends' items database, enchanted jungle items have their own IDs
-							but are named the same (e.g.: whether it is Skirmisher's Sabre or Stalker's Blade with 'Warrior' enchantment will be named
-							'Enchantment: Warrior', but with a different ID). The only way of getting the right jungle item is to check from which items the
-							enchanted jungle item was crafted, that's what we do here with the 'from' dictionary, containing the items from which one was crafted
-						"""
 
 						for id_, item_data in items_data['data'].items():
 							if item_data['name'] != jgl_enchantment:
 								continue
 
 							if item_data.get('from'):
-								# If the enchanted jungle item was crafted from the right jungle item
+								# If the enchanted jungle item was made up the jungle item
 								if jgl_item_id in item_data['from']:
-									# Note: 'id' has to be a str and 'count' an int
 									block['items'].append({'id': id_, 'count': count})
 									break
-
+				else:
+					try:
+						block['items'].append({'id': self._mobafire_items_map[item_name], 'count': count})
+					except KeyError as ex:
+						outdated_items.add(ex.args[0])
 						continue
 
-				try:
-					# Note: 'id' has to be a str and 'count' an int
-					block['items'].append({'id': mobafire_items_map[item_name], 'count': count})
+			blocks.append(block)
 
-					# If this item exists in ARAM then add it too (Quick Charge items)
-					# so that if we play ARAM with this set, the item still appears
-					aram_item = item_name + ' (Quick Charge)'
+		item_set = json.dumps({
+			'associatedChampions': [champion_id],
+			'associatedMaps': [],
+			'title': set_name,
+			'blocks': blocks,
+		})
 
-					if aram_item in mobafire_items_map.keys():
-						block['items'].append({'id': mobafire_items_map[aram_item], 'count': count})
-				except KeyError as ex:
-					self.outdated_items.add(ex.args[0])
-					continue
-
-			self.blocks.append(block)
+		return {
+			'code': CODE_OK,
+			'item_set': item_set,
+			'outdated_items': outdated_items,
+		}
 
 class MobalyticsTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?app\.mobalytics\.gg\/champions\/[A-Za-z]+\/build'
 
-	def __init__(self, set_name, url, build_name=None):
-		super().__init__(set_name, url)
-		self.build_name = build_name
+	def generate_item_set(self, set_name, url, build_name=None):
+		if len(set_name) > SET_NAME_MAX_LENGTH:
+			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
 
-	def _validate_input(self):
-		if not re.match(MobalyticsTranslator.REGEX, self.url):
-			raise TranslateException("Given URL does not match a Mobalytics guide URL")
+		if not re.match(MobalyticsTranslator.REGEX, url):
+			return {'code': CODE_ERROR_URL, 'error': "Invalid Mobalytics build URL"}
 
-		super()._validate_input()
+		champion_name = url.split('/')[-2]
+		champion_id = get_champion_id(champion_name)
 
-	def _translate_build(self):
-		champion_name = self.url.split('/')[-2]
-		self.champion_id = get_champion_id(champion_name)
+		if champion_id == 0:
+			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
 
-		if self.champion_id == 0:
-			raise TranslateException("Champion not found in database: <{}>".format(champion_name))
+		resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name.lower()})
 
-		self.resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name.lower()})
+		if resp.status_code != 200:
+			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given Mobalytics build's data. Server returned status code {}".format(resp.status_code)}
 
-		if self.resp.status_code != 200:
-			raise TranslateException("Could not reach this Mobalytics build's data. Status code: {}".format(self.resp.status_code))
+		data = resp.json()
 
-		data = self.resp.json()
-		build = None
+		build_to_translate = None
 
-		if self.build_name:
+		if build_name:
+			build_name = build_name.strip().lower()
+
 			for role in data['data']['roles']:
-				for temp in role['builds']:
-					if temp['name'].lower() == self.build_name.lower():
-						build = temp
+				for build in role['builds']:
+					if build['name'].strip().lower() == build_name:
+						build_to_translate = build
 						break
 		else:
-			build = data['data']['roles'][0]['builds'][0]
+			# By default we pick the first build of the first role
+			build_to_translate = data['data']['roles'][0]['builds'][0]
 
-		self.blocks = []
+		if not build_to_translate:
+			return {'code': CODE_ERROR_OTHER, 'error': "Could not retrieve the build's data"}
 
-		if not build:
-			raise TranslateException("Could not retrieve data for this build")
+		blocks = []
 
-		for name, items in build['items']['general'].items():
+		for block_id, items in build_to_translate['items']['general'].items():
 			block = {}
 
-			if name == 'start':
+			if block_id == 'start':
 				block['type'] = "Starter"
-			elif name == 'early':
+			elif block_id == 'early':
 				block['type'] = "Early items"
-			elif name == 'core':
+			elif block_id == 'core':
 				block['type'] = "Core items"
-			elif name == 'full':
+			elif block_id == 'full':
 				block['type'] = "Full build"
 			else:
 				block['type'] = "???"
@@ -255,12 +221,12 @@ class MobalyticsTranslator(Translator):
 			for id_, count in dict(counter).items():
 				block['items'].append({'id': id_, 'count': count})
 
-			if name == 'start':
-				self.blocks.insert(0, block)
+			if block_id == 'start':
+				blocks.insert(0, block)
 			else:
-				self.blocks.append(block)
+				blocks.append(block)
 
-		for situational in build['items']['situational']:
+		for situational in build_to_translate['items']['situational']:
 			block = {}
 			block['type'] = "Situational - " + situational['name']
 			block['showIfSummonerSpell'] = ""
@@ -272,99 +238,102 @@ class MobalyticsTranslator(Translator):
 			for id_, count in dict(counter).items():
 				block['items'].append({'id': id_, 'count': count})
 
-			self.blocks.append(block)
+			blocks.append(block)
+
+		item_set = json.dumps({
+			'associatedChampions': [champion_id],
+			'associatedMaps': [],
+			'title': set_name,
+			'blocks': blocks,
+		})
+
+		return {'code': CODE_OK, 'item_set': item_set}
 
 class OpggTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?((www|na)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)'
 
-	def __init__(self, set_name, url):
-		super().__init__(set_name, url)
+	def generate_item_set(self, set_name, url):
+		if len(set_name) > SET_NAME_MAX_LENGTH:
+			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
 
-	def _validate_input(self):
-		if not re.match(OpggTranslator.REGEX, self.url):
-			raise TranslateException("Invalid OP.GG build URL")
+		if not re.match(OpggTranslator.REGEX, url):
+			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
 
-		super()._validate_input()
+		champion_name = url.split('/')[-3]
+		champion_id = get_champion_id(champion_name)
 
-	def _translate_build(self):
-		champion_name = self.url.split('/')[-3].lower()
-		self.champion_id = get_champion_id(champion_name)
+		if champion_id == 0:
+			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
 
-		if self.champion_id == 0:
-			raise TranslateException("Champion not found in database: <{}>".format(champion_name))
+		resp = requests.get(url)
 
-		soup = BeautifulSoup(self.resp.text, 'html.parser')
+		if resp.status_code != 200:
+			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given OP.GG build's webpage. Server returned status code {}".format(resp.status_code)}
+
+		soup = BeautifulSoup(resp.text, 'html.parser')
 		rows = soup.find_all('table', class_='champion-overview__table')[1].tbody.find_all('tr')
 
-		block_title = str()
+		category_title = "???"
 
-		block_index = 1
-		boots_index = int()
-
-		self.blocks = []
+		blocks = []
 
 		for index, row in enumerate(rows):
 			block = {}
 
+			# If this row is the first of a new category
 			if len(row['class']) == 2 and row['class'][1] == 'champion-overview__row--first':
-				block_title = row.th.text
+				# We retrieve the category name
+				category_title = row.th.text
 
-				if block_title == "Boots":
-					boots_index = index
-					break
+			pick_rate = row.find('td', class_='champion-overview__stats--pick').strong.text
 
-				block_index = 1
-
-			block['type'] = block_title + " #" + str(block_index)
+			block['type'] = "{} ({} pick rate)".format(category_title, pick_rate)
 			block['showIfSummonerSpell'] = ""
 			block['hideIfSummonerSpell'] = ""
 			block['items'] = []
 
-			for item in row.td.ul.find_all('li', class_=['champion-stats__list__item', 'tip', 'tpd-delegation-uid-1']):
-				id_ = item.img['src'].split('/')[-1].split('.png')[0]
+			for item_li in row.find('td', class_=['champion-overview__data', 'champion-overview__border', 'champion-overview__border--first']).ul.find_all('li', class_=['champion-stats__list__item', 'tip']):
+				id_ = item_li.img['src'].split('/')[-1].split('.png')[0] # Extract item's ID from image's URL
 				block['items'].append({'id': id_, 'count': 1})
 
-			self.blocks.append(block)
-			block_index += 1
+			blocks.append(block)
 
-		block = {}
-		block['type'] = "Boots"
-		block['showIfSummonerSpell'] = ""
-		block['hideIfSummonerSpell'] = ""
-		block['items'] = []
+		item_set = json.dumps({
+			'associatedChampions': [champion_id],
+			'associatedMaps': [],
+			'title': set_name,
+			'blocks': blocks,
+		})
 
-		for row in rows[boots_index:]:
-			for item in row.td.ul.find_all('li', class_=['champion-stats__list__item', 'tip', 'tpd-delegation-uid-1']):
-				id_ = item.img['src'].split('/')[-1].split('.png')[0]
-				block['items'].append({'id': id_, 'count': 1})
-
-		self.blocks.append(block)
+		return {'code': CODE_OK, 'item_set': item_set}
 
 class ChampionggTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?(www\.)?champion\.gg\/champion\/[A-Za-z]+\/(Top|Jungle|Middle|ADC|Support)'
 
-	def __init__(self, set_name, url):
-		super().__init__(set_name, url)
+	def generate_item_set(self, set_name, url):
+		if len(set_name) > SET_NAME_MAX_LENGTH:
+			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
 
-	def _validate_input(self):
-		if not re.match(ChampionggTranslator.REGEX, self.url):
-			raise TranslateException("Invalid Champion.gg build URL")
+		if not re.match(ChampionggTranslator.REGEX, url):
+			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
 
-		super()._validate_input()
+		champion_name = url.split('/')[-2]
+		champion_id = get_champion_id(champion_name)
 
-	def _translate_build(self):
-		champion_name = self.url.split('/')[-2].lower()
-		self.champion_id = get_champion_id(champion_name)
+		if champion_id == 0:
+			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
 
-		if self.champion_id == 0:
-			raise TranslateException("Champion not found in database: <{}>".format(champion_name))
+		resp = requests.get(url)
 
-		soup = BeautifulSoup(self.resp.text, 'html.parser')
+		if resp.status_code != 200:
+			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given Champion.gg build's webpage. Server returned status code {}".format(resp.status_code)}
+
+		soup = BeautifulSoup(resp.text, 'html.parser')
 
 		sections = soup.find_all('div', class_='champion-area')[1].find_all('div', class_='col-xs-12 col-sm-12 col-md-6')[1].find_all('div', class_=['col-xs-12', 'col-sm-12'])
 		sections.reverse()
 
-		self.blocks = []
+		blocks = []
 
 		for section in sections:
 			builds = section.find_all('div', class_='build-wrapper')
@@ -378,7 +347,16 @@ class ChampionggTranslator(Translator):
 				block['items'] = []
 
 				for a in builds[i].find_all('a'):
-					id_ = a.img['src'].split('/')[-1].split('.')[0]
+					id_ = a.img['src'].split('/')[-1].split('.png')[0] # Extract item's ID from image's URL
 					block['items'].append({'id': id_, 'count': 1})
 
-				self.blocks.append(block)
+				blocks.append(block)
+
+		item_set = json.dumps({
+			'associatedChampions': [champion_id],
+			'associatedMaps': [],
+			'title': set_name,
+			'blocks': blocks,
+		})
+
+		return {'code': CODE_OK, 'item_set': item_set}
