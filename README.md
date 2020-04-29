@@ -3,13 +3,16 @@
 ## Overview
 
 ### Description 
-Simple Python API that enables you to translate online builds from popular League of Legends builds websites (such as MOBAfire, Mobalytics, OP.GG, Champion.gg, ...) into item sets
+Simple API written in Python 3 that lets you translate online builds from popular League of Legends builds websites (such as MOBAfire, Mobalytics, OP.GG, Champion.gg, ...) into clipboard imports. Thus you will be able to quickly copy online item builds into the game without any effort.
 
 ### How does it work
-There is an algorithm for each LoL builds website which (in most of the cases) fetches the HTML source code of the corresponding build's webpage and translates it to it's JSON representation, compatible with the game. It can then be imported simply by copy/pasting
+Each website that is currently supported by itemsetcopier has a class inherited from `Translator` which has one function : `generate_item_set` that does all the underlying translation and error-handling work. When called, if there was no error during the process, the function will return a dict with `code` which is an int with a value of `CODE_OK` and `item_set` which is a string containing the build's data which you can use as a clipboard import. In case of an error, a specific int in `code` will be returned as well as an error message contained in `error`.
 
-### Web app
-Try it out yourself [here](https://www.binaryalien.net/itemsetcopier/) !
+### Web application
+I have implemented itemsetcopier into a web application so that anyone can copy builds easily. You can try it out yourself [here](https://www.binaryalien.net/itemsetcopier/) !
+
+### Web API (coming soon)
+I will soon release a web API for this program on [my website](https://www.binaryalien.net) !
 
 ## Prerequisites
 
