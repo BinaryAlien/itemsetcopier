@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
 import collections
 import json
-import os
 import re
 import requests
 
