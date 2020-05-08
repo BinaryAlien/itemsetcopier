@@ -11,8 +11,8 @@ Each website that is currently supported by itemsetcopier has a class inherited 
 ### Web application
 I have implemented itemsetcopier into a web application so that anyone can copy builds easily. You can try it out yourself [here](https://www.binaryalien.net/itemsetcopier/) !
 
-### Web API (coming soon)
-I will soon release a web API for this program on [my website](https://www.binaryalien.net) !
+### HTTP API
+There is an HTTP API for itemsetcopier available on [my website](https://www.binaryalien.net/itemsetcopier/api/) !
 
 ## Prerequisites
 

@@ -15,6 +15,7 @@ CODE_ERROR_URL = 0x02
 CODE_ERROR_CHAMPION = 0x03
 CODE_ERROR_SERVER = 0x04
 CODE_ERROR_OTHER = 0x05
+CODE_ERROR_INVALID_INPUT = 0x06
 
 items_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json').json()
 champions_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json').json()
@@ -55,11 +56,22 @@ class MobafireTranslator(Translator):
 
 			self._mobafire_items_map[name] = id_
 
-	def generate_item_set(self, set_name, url, build_index=0):
-		if len(set_name) > SET_NAME_MAX_LENGTH:
+	def generate_item_set(self, set_name, url, build_index=0, *args, **kwargs):
+		if set_name is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
+		elif not isinstance(set_name, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
+		elif url is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
+		elif not isinstance(url, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
+		elif build_index is None:
+			build_index = 0
+		elif not isinstance(build_index, int):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "build_index must be an int"}
+		elif len(set_name) > SET_NAME_MAX_LENGTH:
 			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-
-		if not re.match(MobafireTranslator.REGEX, url):
+		elif not re.match(MobafireTranslator.REGEX, url):
 			return {'code': CODE_ERROR_URL, 'error': "Invalid MOBAfire guide URL"}
 
 		resp = requests.get(url)
@@ -152,17 +164,26 @@ class MobafireTranslator(Translator):
 		return {
 			'code': CODE_OK,
 			'item_set': item_set,
-			'outdated_items': outdated_items,
+			'outdated_items': list(outdated_items),
 		}
 
 class MobalyticsTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?app\.mobalytics\.gg\/champions\/[A-Za-z]+\/build'
 
-	def generate_item_set(self, set_name, url, build_name=None):
-		if len(set_name) > SET_NAME_MAX_LENGTH:
+	def generate_item_set(self, set_name, url, build_name=None, *args, **kwargs):
+		if set_name is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
+		elif not isinstance(set_name, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
+		elif url is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
+		elif not isinstance(url, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
+		elif not build_name is None and not isinstance(build_name, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "build_name must be an str"}
+		elif len(set_name) > SET_NAME_MAX_LENGTH:
 			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-
-		if not re.match(MobalyticsTranslator.REGEX, url):
+		elif not re.match(MobalyticsTranslator.REGEX, url):
 			return {'code': CODE_ERROR_URL, 'error': "Invalid Mobalytics build URL"}
 
 		champion_name = url.split('/')[-2]
@@ -251,11 +272,18 @@ class MobalyticsTranslator(Translator):
 class OpggTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?((www|na)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)'
 
-	def generate_item_set(self, set_name, url):
-		if len(set_name) > SET_NAME_MAX_LENGTH:
+	def generate_item_set(self, set_name, url, *args, **kwargs):
+		if set_name is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
+		elif not isinstance(set_name, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
+		elif url is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
+		elif not isinstance(url, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
+		elif len(set_name) > SET_NAME_MAX_LENGTH:
 			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-
-		if not re.match(OpggTranslator.REGEX, url):
+		elif not re.match(OpggTranslator.REGEX, url):
 			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
 
 		champion_name = url.split('/')[-3]
@@ -309,11 +337,18 @@ class OpggTranslator(Translator):
 class ChampionggTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?(www\.)?champion\.gg\/champion\/[A-Za-z]+\/(Top|Jungle|Middle|ADC|Support)'
 
-	def generate_item_set(self, set_name, url):
-		if len(set_name) > SET_NAME_MAX_LENGTH:
+	def generate_item_set(self, set_name, url, *args, **kwargs):
+		if set_name is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
+		elif not isinstance(set_name, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
+		elif url is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
+		elif not isinstance(url, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
+		elif len(set_name) > SET_NAME_MAX_LENGTH:
 			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-
-		if not re.match(ChampionggTranslator.REGEX, url):
+		elif not re.match(ChampionggTranslator.REGEX, url):
 			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
 
 		champion_name = url.split('/')[-2]
