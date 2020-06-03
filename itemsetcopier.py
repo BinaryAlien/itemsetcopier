@@ -5,7 +5,7 @@ import json
 import re
 import requests
 
-CLIENT_VERSION = '10.9.1' # League of Legends client's current version (might not be up-to-date)
+CLIENT_VERSION = '10.11.1' # League of Legends client's current version (might not be up-to-date)
 
 SET_NAME_MAX_LENGTH = 75
 
