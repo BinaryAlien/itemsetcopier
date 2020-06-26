@@ -1,11 +1,10 @@
-from abc import ABC, abstractmethod
 from bs4 import BeautifulSoup
 import collections
 import json
 import re
 import requests
 
-CLIENT_VERSION = '10.11.1' # League of Legends client's current version (might not be up-to-date)
+CLIENT_VERSION = '10.13.1' # League of Legends client's current version (might not be up-to-date)
 
 SET_NAME_MAX_LENGTH = 75
 
@@ -17,8 +16,8 @@ CODE_ERROR_SERVER = 0x04
 CODE_ERROR_OTHER = 0x05
 CODE_ERROR_INVALID_INPUT = 0x06
 
-items_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json').json()
-champions_data = requests.get('http://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json').json()
+items_data = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json').json()
+champions_data = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json').json()
 
 def get_champion_id(champion_name):
 	"""
@@ -28,7 +27,7 @@ def get_champion_id(champion_name):
 	"""
 
 	if not champion_name:
-		return 0
+		raise LookupError
 
 	champion_name = champion_name.strip().lower()
 
@@ -36,27 +35,29 @@ def get_champion_id(champion_name):
 		if champion_name == champion['id'].lower() or champion_name == champion['name'].lower():
 			return int(champion['key'])
 
-	return 0
+	raise LookupError
 
-class Translator(ABC):
-	@abstractmethod
-	def generate_item_set(self, set_name, url):
+class Translator:
+	@staticmethod
+	def generate_item_set(*args, **kwargs):
 		pass
 
 class MobafireTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?(www\.)?mobafire\.com\/league-of-legends\/build\/[A-Za-z0-9-]+-[0-9]{6}'
 
-	def __init__(self):
-		self._mobafire_items_map = {} # Matches a Mobafire item's name to it's corresponding ID
-
+	@staticmethod
+	def _get_item_id(mobafire_name):
 		for id_, item_data in items_data['data'].items():
 			# Mobafire's trinkets doesn't have ' (Trinket)' in their name so we remove it
 			# e.g.: 'Warding Totem (Trinket)' [LoL] -> 'Warding Totem' [Mobafire]
-			name = item_data['name'].replace(' (Trinket)', '')
 
-			self._mobafire_items_map[name] = id_
+			if mobafire_name == item_data['name'].replace(" (Trinket)", ""):
+				return id_
 
-	def generate_item_set(self, set_name, url, build_index=0, *args, **kwargs):
+		raise LookupError
+
+	@staticmethod
+	def generate_item_set(set_name=None, url=None, build_index=0, *args, **kwargs):
 		if set_name is None:
 			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
@@ -82,10 +83,11 @@ class MobafireTranslator(Translator):
 		soup = BeautifulSoup(resp.text, 'html.parser')
 
 		champion_name = soup.find('div', class_='title').find('h3').text
-		champion_id = get_champion_id(champion_name)
 
-		if champion_id == 0:
-			raise TranslateException("Champion not found in database: '{}'".format(champion_name))
+		try:
+			champion_id = get_champion_id(champion_name)
+		except LookupError:
+			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
 
 		builds = soup.find_all('div', class_='view-guide__build')
 
@@ -130,8 +132,12 @@ class MobafireTranslator(Translator):
 						# The jungle item's name (without enchantment)
 						jgl_item_name = jgl_item_name.group()
 
-						# The jungle item's ID (without enchantment)
-						jgl_item_id = self._mobafire_items_map[jgl_item_name]
+						try:
+							# The jungle item's ID (without enchantment)
+							jgl_item_id = MobafireTranslator._get_item_id(jgl_item_name)
+						except LookupError:
+							outdated_items.add(item_name)
+							continue
 
 						# The jungle item's name (with corresponding enchantment)
 						jgl_enchantment = 'Enchantment: ' + jgl_enchantment.group()
@@ -147,9 +153,9 @@ class MobafireTranslator(Translator):
 									break
 				else:
 					try:
-						block['items'].append({'id': self._mobafire_items_map[item_name], 'count': count})
-					except KeyError as ex:
-						outdated_items.add(ex.args[0])
+						block['items'].append({'id': MobafireTranslator._get_item_id(item_name), 'count': count})
+					except LookupError:
+						outdated_items.add(item_name)
 						continue
 
 			blocks.append(block)
@@ -170,7 +176,8 @@ class MobafireTranslator(Translator):
 class MobalyticsTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?app\.mobalytics\.gg\/champions\/[A-Za-z]+\/build'
 
-	def generate_item_set(self, set_name, url, build_name=None, *args, **kwargs):
+	@staticmethod
+	def generate_item_set(set_name=None, url=None, build_name=None, *args, **kwargs):
 		if set_name is None:
 			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
@@ -187,9 +194,10 @@ class MobalyticsTranslator(Translator):
 			return {'code': CODE_ERROR_URL, 'error': "Invalid Mobalytics build URL"}
 
 		champion_name = url.split('/')[-2]
-		champion_id = get_champion_id(champion_name)
 
-		if champion_id == 0:
+		try:
+			champion_id = get_champion_id(champion_name)
+		except LookupError:
 			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
 
 		resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name.lower()})
@@ -272,7 +280,8 @@ class MobalyticsTranslator(Translator):
 class OpggTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?((www|na)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)'
 
-	def generate_item_set(self, set_name, url, *args, **kwargs):
+	@staticmethod
+	def generate_item_set(set_name=None, url=None, *args, **kwargs):
 		if set_name is None:
 			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
@@ -287,9 +296,10 @@ class OpggTranslator(Translator):
 			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
 
 		champion_name = url.split('/')[-3]
-		champion_id = get_champion_id(champion_name)
 
-		if champion_id == 0:
+		try:
+			champion_id = get_champion_id(champion_name)
+		except LookupError:
 			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
 
 		resp = requests.get(url)
@@ -337,7 +347,8 @@ class OpggTranslator(Translator):
 class ChampionggTranslator(Translator):
 	REGEX = r'((http|https):\/\/)?(www\.)?champion\.gg\/champion\/[A-Za-z]+\/(Top|Jungle|Middle|ADC|Support)'
 
-	def generate_item_set(self, set_name, url, *args, **kwargs):
+	@staticmethod
+	def generate_item_set(set_name=None, url=None, *args, **kwargs):
 		if set_name is None:
 			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
@@ -352,9 +363,10 @@ class ChampionggTranslator(Translator):
 			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
 
 		champion_name = url.split('/')[-2]
-		champion_id = get_champion_id(champion_name)
 
-		if champion_id == 0:
+		try:
+			champion_id = get_champion_id(champion_name)
+		except LookupError:
 			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
 
 		resp = requests.get(url)

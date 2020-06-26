@@ -111,7 +111,7 @@ class MobalyticsTest(unittest.TestCase):
 
 		set_name = "Ahri Mid"
 		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = "GlAcIaL AuGmEnT AhRi"
+		build_name = "AhRi GlAcIaL MiD"
 
 		res = self._translator.generate_item_set(set_name, url, build_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
