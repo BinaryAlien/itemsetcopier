@@ -4,26 +4,59 @@ import json
 import re
 import requests
 
-CLIENT_VERSION = '10.13.1' # League of Legends client's current version (might not be up-to-date)
-
 SET_NAME_MAX_LENGTH = 75
 
 CODE_OK = 0x00
 CODE_ERROR_SET_NAME_MAX_LENGTH = 0x01
 CODE_ERROR_URL = 0x02
 CODE_ERROR_CHAMPION = 0x03
-CODE_ERROR_SERVER = 0x04
-CODE_ERROR_OTHER = 0x05
+CODE_ERROR_REMOTE = 0x04
+CODE_ERROR_CDN = 0x05
 CODE_ERROR_INVALID_INPUT = 0x06
 
-items_data = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json').json()
-champions_data = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json').json()
+CLIENT_VERSION = '10.13.1' # League of Legends client's current version (might not be up-to-date)
+REQUEST_TIMEOUT = 10
 
-def get_champion_id(champion_name):
+cache = {'item': None, 'champion': None}
+
+def items():
+	if not cache['item']:
+		try:
+			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json', timeout=REQUEST_TIMEOUT)
+		except requests.exceptions.RequestException:
+			raise RuntimeError("could not retrieve items data from League of Legends CDN")
+
+		if not resp.status_code == 200:
+			raise RuntimeError("could not retrieve items data from League of Legends CDN")
+
+		try:
+			cache['item'] = resp.json()
+		except json.JSONDecodeError:
+			raise RuntimeError("could not retrieve items data from League of Legends CDN")
+
+	return cache['item']
+
+def champions():
+	if not cache['champion']:
+		try:
+			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json', timeout=REQUEST_TIMEOUT)
+		except requests.exceptions.RequestException:
+			raise RuntimeError("could not retrieve champions data from League of Legends CDN")
+
+		if not resp.status_code == 200:
+			raise RuntimeError("could not retrieve champions data from League of Legends CDN")
+
+		try:
+			cache['champion'] = resp.json()
+		except json.JSONDecodeError:
+			raise RuntimeError("could not retrieve champions data from League of Legends CDN")
+
+	return cache['champion']
+
+def get_champion_key(champion_name):
 	"""
-		Matches a champion's name to it's corresponding ID
-		Compares the champion's name to it's corresponding database name and ID (case insensitive)
-		Returns 0 if no corresponding champion was found
+		Matches a champion name to it's corresponding ID
+		Raises LookupError if the champion was not found
 	"""
 
 	if not champion_name:
@@ -31,7 +64,7 @@ def get_champion_id(champion_name):
 
 	champion_name = champion_name.strip().lower()
 
-	for champion in champions_data['data'].values():
+	for champion in champions()['data'].values():
 		if champion_name == champion['id'].lower() or champion_name == champion['name'].lower():
 			return int(champion['key'])
 
@@ -47,17 +80,17 @@ class MobafireTranslator(Translator):
 
 	@staticmethod
 	def _get_item_id(mobafire_name):
-		for id_, item_data in items_data['data'].items():
+		for id, item in items()['data'].items():
 			# Mobafire's trinkets doesn't have ' (Trinket)' in their name so we remove it
 			# e.g.: 'Warding Totem (Trinket)' [LoL] -> 'Warding Totem' [Mobafire]
 
-			if mobafire_name == item_data['name'].replace(" (Trinket)", ""):
-				return id_
+			if mobafire_name == item['name'].replace(" (Trinket)", ""):
+				return id
 
 		raise LookupError
 
 	@staticmethod
-	def generate_item_set(set_name=None, url=None, build_index=0, *args, **kwargs):
+	def generate_item_set(set_name=None, url=None, build_index=1, *args, **kwargs):
 		if set_name is None:
 			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
@@ -67,9 +100,12 @@ class MobafireTranslator(Translator):
 		elif not isinstance(url, str):
 			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
 		elif build_index is None:
-			build_index = 0
+			build_index = 1
 		elif not isinstance(build_index, int):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "build_index must be an int"}
+			try:
+				build_index = int(build_index)
+			except ValueError:
+				return {'code': CODE_ERROR_INVALID_INPUT, 'error': "build_index must be an int"}
 		elif len(set_name) > SET_NAME_MAX_LENGTH:
 			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
 		elif not re.match(MobafireTranslator.REGEX, url):
@@ -78,26 +114,28 @@ class MobafireTranslator(Translator):
 		resp = requests.get(url)
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given MOBAfire guide's webpage. Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given MOBAfire guide's webpage. Server returned status code {}".format(resp.status_code)}
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 
 		champion_name = soup.find('div', class_='title').find('h3').text
 
 		try:
-			champion_id = get_champion_id(champion_name)
+			champion_key = get_champion_key(champion_name)
 		except LookupError:
-			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
+			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
+		except RuntimeError:
+			return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
 		builds = soup.find_all('div', class_='view-guide__build')
 
-		if build_index >= len(builds):
-			build_index = 0
+		if build_index < 1 or build_index > len(builds):
+			build_index = 1
 
 		blocks = []
 		outdated_items = set()
 
-		for block_div in builds[build_index].find('div', class_='view-guide__build__items').find('div', class_='collapseBox').find_all('div', class_='view-guide__items'):
+		for block_div in builds[build_index - 1].find('div', class_='view-guide__build__items').find('div', class_='collapseBox').find_all('div', class_='view-guide__items'):
 			block = {}
 			block['type'] = block_div.find('div', class_='view-guide__items__bar').span.text # Name of the block
 			block['showIfSummonerSpell'] = ""
@@ -120,8 +158,7 @@ class MobafireTranslator(Translator):
 
 					if jgl_enchantment:
 						"""
-							Here we do some more alchemy because in the League of Legends' items database, enchanted jungle items have their own IDs but are named
-							the same.
+							Here we do some more alchemy because in the League of Legends' items data, enchanted jungle items have their own IDs but are named the same.
 
 							For example, whether it is Skirmisher's Sabre or Stalker's Blade with 'Warrior' enchantment, both of them are named 'Enchantment: Warrior'.
 
@@ -138,17 +175,19 @@ class MobafireTranslator(Translator):
 						except LookupError:
 							outdated_items.add(item_name)
 							continue
+						except RuntimeError:
+							return {'code': CODE_ERROR_CDN, 'error': "Could not retrive items data from League of Legends CDN"}
 
 						# The jungle item's name (with corresponding enchantment)
 						jgl_enchantment = 'Enchantment: ' + jgl_enchantment.group()
 
-						for id_, item_data in items_data['data'].items():
-							if item_data['name'] != jgl_enchantment:
+						for id_, item in items()['data'].items():
+							if item['name'] != jgl_enchantment:
 								continue
 
-							if item_data.get('from'):
+							if item.get('from'):
 								# If the enchanted jungle item was made up the jungle item
-								if jgl_item_id in item_data['from']:
+								if jgl_item_id in item['from']:
 									block['items'].append({'id': id_, 'count': count})
 									break
 				else:
@@ -157,11 +196,13 @@ class MobafireTranslator(Translator):
 					except LookupError:
 						outdated_items.add(item_name)
 						continue
+					except RuntimeError:
+						return {'code': CODE_ERROR_CDN, 'error': "Could not retrive items data from League of Legends CDN"}
 
 			blocks.append(block)
 
 		item_set = json.dumps({
-			'associatedChampions': [champion_id],
+			'associatedChampions': [champion_key],
 			'associatedMaps': [],
 			'title': set_name,
 			'blocks': blocks,
@@ -174,111 +215,110 @@ class MobafireTranslator(Translator):
 		}
 
 class MobalyticsTranslator(Translator):
-	REGEX = r'^((http|https):\/\/)?app\.mobalytics\.gg\/champions\/[A-Za-z]+\/build$'
-
 	@staticmethod
-	def generate_item_set(set_name=None, url=None, build_name=None, *args, **kwargs):
-		if set_name is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
-		elif not isinstance(set_name, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
-		elif url is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
-		elif not isinstance(url, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
-		elif not build_name is None and not isinstance(build_name, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "build_name must be an str"}
-		elif len(set_name) > SET_NAME_MAX_LENGTH:
-			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-		elif not re.match(MobalyticsTranslator.REGEX, url):
-			return {'code': CODE_ERROR_URL, 'error': "Invalid Mobalytics build URL"}
+	def generate_item_set(champion_key=None, champion_name=None, *args, **kwargs):
+		if champion_key is None:
+			if champion_name is None:
+				return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify at least 'champion_key' or 'champion_name'"}
+			elif not isinstance(champion_name, str):
+				return {'code': CODE_ERROR_INVALID_INPUT, 'error': "champion_name must be an str"}
+			else:
+				try:
+					champion_key = get_champion_key(champion_name)
+				except LookupError:
+					return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
+				except RuntimeError:
+					return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+		else:
+			if not isinstance(champion_key, int):
+				try:
+					champion_key = int(champion_key)
+				except ValueError:
+					return {'code': CODE_ERROR_INVALID_INPUT, 'error': "champion_key must be an int"}
 
-		champion_name = url.split('/')[-2]
+			valid = False
+			champion_key_str = str(champion_key)
 
-		try:
-			champion_id = get_champion_id(champion_name)
-		except LookupError:
-			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
+			try:
+				for champion in champions()['data'].values():
+					if champion['key'] == champion_key_str:
+						valid = True
+						champion_name = champion['id']
+						break
+			except RuntimeError:
+				return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
-		resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name.lower()})
+			if not valid:
+				return {'code': CODE_ERROR_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
+
+		resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name})
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given Mobalytics build's data. Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given Mobalytics build's  Server returned status code {}".format(resp.status_code)}
 
-		data = resp.json()
+		mobalytics_data = resp.json()
+		item_sets = []
 
-		build_to_translate = None
+		for role in mobalytics_data['data']['roles']:
+			for build in role['builds']:
 
-		if build_name:
-			build_name = build_name.strip().lower()
+				blocks = []
 
-			for role in data['data']['roles']:
-				for build in role['builds']:
-					if build['name'].strip().lower() == build_name:
-						build_to_translate = build
-						break
-		else:
-			# By default we pick the first build of the first role
-			build_to_translate = data['data']['roles'][0]['builds'][0]
+				for block_id, items in build['items']['general'].items():
+					block = {}
 
-		if not build_to_translate:
-			return {'code': CODE_ERROR_OTHER, 'error': "Could not retrieve the build's data"}
+					if block_id == 'start':
+						block['type'] = "Starter"
+					elif block_id == 'early':
+						block['type'] = "Early items"
+					elif block_id == 'core':
+						block['type'] = "Core items"
+					elif block_id == 'full':
+						block['type'] = "Full build"
+					else:
+						block['type'] = "???"
 
-		blocks = []
+					block['showIfSummonerSpell'] = ""
+					block['hideIfSummonerSpell'] = ""
 
-		for block_id, items in build_to_translate['items']['general'].items():
-			block = {}
+					counter = collections.Counter(items)
+					block['items'] = []
 
-			if block_id == 'start':
-				block['type'] = "Starter"
-			elif block_id == 'early':
-				block['type'] = "Early items"
-			elif block_id == 'core':
-				block['type'] = "Core items"
-			elif block_id == 'full':
-				block['type'] = "Full build"
-			else:
-				block['type'] = "???"
+					for id_, count in dict(counter).items():
+						block['items'].append({'id': id_, 'count': count})
 
-			block['showIfSummonerSpell'] = ""
-			block['hideIfSummonerSpell'] = ""
+					if block_id == 'start':
+						blocks.insert(0, block)
+					else:
+						blocks.append(block)
 
-			counter = collections.Counter(items)
-			block['items'] = []
+				for situational in build['items']['situational']:
+					block = {}
+					block['type'] = "Situational - " + situational['name']
+					block['showIfSummonerSpell'] = ""
+					block['hideIfSummonerSpell'] = ""
 
-			for id_, count in dict(counter).items():
-				block['items'].append({'id': id_, 'count': count})
+					counter = collections.Counter(situational['build'])
+					block['items'] = []
 
-			if block_id == 'start':
-				blocks.insert(0, block)
-			else:
-				blocks.append(block)
+					for id_, count in dict(counter).items():
+						block['items'].append({'id': id_, 'count': count})
 
-		for situational in build_to_translate['items']['situational']:
-			block = {}
-			block['type'] = "Situational - " + situational['name']
-			block['showIfSummonerSpell'] = ""
-			block['hideIfSummonerSpell'] = ""
+					blocks.append(block)
 
-			counter = collections.Counter(situational['build'])
-			block['items'] = []
+				item_set = {
+					'associatedChampions': [champion_key],
+					'associatedMaps': [],
+					'title': build['name'],
+					'blocks': blocks,
+				}
 
-			for id_, count in dict(counter).items():
-				block['items'].append({'id': id_, 'count': count})
+				item_sets.append(item_set)
 
-			blocks.append(block)
-
-		item_set = json.dumps({
-			'associatedChampions': [champion_id],
-			'associatedMaps': [],
-			'title': set_name,
-			'blocks': blocks,
-		})
-
-		return {'code': CODE_OK, 'item_set': item_set}
+		return {'code': CODE_OK, 'item_set': json.dumps(item_sets)}
 
 class OpggTranslator(Translator):
-	REGEX = r'^((http|https):\/\/)?((www|na)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)$'
+	REGEX = r'^((http|https):\/\/)?((www|na|euw)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)$'
 
 	@staticmethod
 	def generate_item_set(set_name=None, url=None, *args, **kwargs):
@@ -298,14 +338,16 @@ class OpggTranslator(Translator):
 		champion_name = url.split('/')[-3]
 
 		try:
-			champion_id = get_champion_id(champion_name)
+			champion_key = get_champion_key(champion_name)
 		except LookupError:
-			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
+			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
+		except RuntimeError:
+			return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
 		resp = requests.get(url)
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given OP.GG build's webpage. Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given OP.GG build's webpage. Server returned status code {}".format(resp.status_code)}
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 		rows = soup.find_all('table', class_='champion-overview__table')[1].tbody.find_all('tr')
@@ -336,7 +378,7 @@ class OpggTranslator(Translator):
 			blocks.append(block)
 
 		item_set = json.dumps({
-			'associatedChampions': [champion_id],
+			'associatedChampions': [champion_key],
 			'associatedMaps': [],
 			'title': set_name,
 			'blocks': blocks,
@@ -365,14 +407,16 @@ class ChampionggTranslator(Translator):
 		champion_name = url.split('/')[-2]
 
 		try:
-			champion_id = get_champion_id(champion_name)
+			champion_key = get_champion_key(champion_name)
 		except LookupError:
-			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found in database: '{}'".format(champion_name)}
+			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
+		except RuntimeError:
+			return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
 		resp = requests.get(url)
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_SERVER, 'error': "Could not reach the given Champion.gg build's webpage. Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given Champion.GG build's webpage. Server returned status code {}".format(resp.status_code)}
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 
@@ -399,7 +443,7 @@ class ChampionggTranslator(Translator):
 				blocks.append(block)
 
 		item_set = json.dumps({
-			'associatedChampions': [champion_id],
+			'associatedChampions': [champion_key],
 			'associatedMaps': [],
 			'title': set_name,
 			'blocks': blocks,

@@ -3,15 +3,13 @@ import unittest
 
 class MobafireTest(unittest.TestCase):
 	def test_translator(self):
-		self._translator = itemsetcopier.MobafireTranslator()
-
 		# Valid inputs
 
 		set_name = "Graves Jgl"
 		url = "https://www.mobafire.com/league-of-legends/build/graves-jungle-fallen3s-guide-to-graves-jungle-564027"
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 
@@ -21,7 +19,7 @@ class MobafireTest(unittest.TestCase):
 		url = "https://www.mobafire.com/league-of-legends/build/graves-jungle-fallen3s-guide-to-graves-jungle-564027"
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_SET_NAME_MAX_LENGTH)
 
 
@@ -31,7 +29,7 @@ class MobafireTest(unittest.TestCase):
 		url = "https://google.com/"
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_URL)
 
 
@@ -41,180 +39,120 @@ class MobafireTest(unittest.TestCase):
 		url = "https://www.mobafire.com/league-of-legends/build/graves-jungle-fallen3s-guide-to-graves-jungle-000000"
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
-		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_SERVER)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
+		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_REMOTE)
 
-		# Invalid input 1
+		# Invalid inputs 1
 
 		set_name = None
 		url = "https://www.mobafire.com/league-of-legends/build/graves-jungle-fallen3s-guide-to-graves-jungle-564027"
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 2
+		# Invalid inputs 2
 
 		set_name = int()
 		url = "https://www.mobafire.com/league-of-legends/build/graves-jungle-fallen3s-guide-to-graves-jungle-564027"
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 3
+		# Invalid inputs 3
 
 		set_name = "Graves Jgl"
 		url = None
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 4
+		# Invalid inputs 4
 
 		set_name = "Graves Jgl"
 		url = int()
 		build_index = 0
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 5
+		# Invalid inputs 5
 
 		set_name = "Graves Jgl"
 		url = "https://www.mobafire.com/league-of-legends/build/graves-jungle-fallen3s-guide-to-graves-jungle-564027"
 		build_index = str()
 
-		res = self._translator.generate_item_set(set_name, url, build_index)
+		res = itemsetcopier.MobafireTranslator.generate_item_set(set_name, url, build_index)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 class MobalyticsTest(unittest.TestCase):
 	def test_translator(self):
-		self._translator = itemsetcopier.MobalyticsTranslator()
+		# Valid inputs 1
 
-		# Valid inputs (default build)
+		champion_name = "Ahri"
+		champion_key = None
 
-		set_name = "Ahri Mid"
-		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = None
-
-		res = self._translator.generate_item_set(set_name, url, build_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 
-		# Valid inputs (specific build)
+		# Valid inputs 2
 
-		set_name = "Ahri Mid"
-		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = "AhRi GlAcIaL MiD"
+		champion_name = "LuX"
+		champion_key = None
 
-		res = self._translator.generate_item_set(set_name, url, build_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 
-		# Invalid item set name
+		# Valid inputs 3
 
-		set_name = "t" * (itemsetcopier.SET_NAME_MAX_LENGTH + 1)
-		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = None
+		champion_name = "does not matter if champion_key is given"
+		champion_key = 36
 
-		res = self._translator.generate_item_set(set_name, url, build_name)
-		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_SET_NAME_MAX_LENGTH)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
+		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
+		# Invalid inputs 1
 
-		# Invalid URL
+		champion_name = None
+		champion_key = None
 
-		set_name = "Ahri Mid"
-		url = "https://google.com"
-		build_name = None
-
-		res = self._translator.generate_item_set(set_name, url, build_name)
-		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_URL)
-
-
-		# Invalid champion
-
-		set_name = "Ahri Mid"
-		url = "https://app.mobalytics.gg/champions/tttttttttttttttttttttt/build"
-		build_name = None
-
-		res = self._translator.generate_item_set(set_name, url, build_name)
-		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_CHAMPION)
-
-
-		# Invalid build
-
-		set_name = "Ahri Mid"
-		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = "tttttttttttttttttttttt"
-
-		res = self._translator.generate_item_set(set_name, url, build_name)
-		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_OTHER)
-
-
-		# Invalid input 1
-
-		set_name = None
-		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = None
-
-		res = self._translator.generate_item_set(set_name, url, build_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 2
+		# Invalid inputs 2
 
-		set_name = int()
-		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = None
+		champion_name = int()
+		champion_key = None
 
-		res = self._translator.generate_item_set(set_name, url, build_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 3
+		# Invalid inputs 3
 
-		set_name = "Ahri Mid"
-		url = None
-		build_name = None
+		champion_name = "does not matter if champion_key is given"
+		champion_key = str()
 
-		res = self._translator.generate_item_set(set_name, url, build_name)
-		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
-
-
-		# Invalid input 4
-
-		set_name = "Ahri Mid"
-		url = int()
-		build_name = None
-
-		res = self._translator.generate_item_set(set_name, url, build_name)
-		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
-
-		# Invalid input 5
-
-		set_name = "Ahri Mid"
-		url = "https://app.mobalytics.gg/champions/ahri/build"
-		build_name = int()
-
-		res = self._translator.generate_item_set(set_name, url, build_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 class OpggTest(unittest.TestCase):
 	def test_translator(self):
-		self._translator = itemsetcopier.OpggTranslator()
-
 		# Valid inputs
 
 		set_name = "Graves Jgl"
 		url = "https://www.op.gg/champion/graves/statistics/jungle"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 
@@ -223,7 +161,7 @@ class OpggTest(unittest.TestCase):
 		set_name = "t" * (itemsetcopier.SET_NAME_MAX_LENGTH + 1)
 		url = "https://www.op.gg/champion/graves/statistics/jungle"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_SET_NAME_MAX_LENGTH)
 
 
@@ -232,7 +170,7 @@ class OpggTest(unittest.TestCase):
 		set_name = "Graves Jgl"
 		url = "https://google.com"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_URL)
 
 
@@ -241,55 +179,53 @@ class OpggTest(unittest.TestCase):
 		set_name = "Graves Jgl"
 		url = "https://www.op.gg/champion/tttttttttttttttttttttt/statistics/jungle"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_CHAMPION)
 
 
-		# Invalid input 1
+		# Invalid inputs 1
 
 		set_name = None
 		url = "https://www.op.gg/champion/graves/statistics/jungle"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 2
+		# Invalid inputs 2
 
 		set_name = int()
 		url = "https://www.op.gg/champion/graves/statistics/jungle"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 3
+		# Invalid inputs 3
 
 		set_name = "Graves Jgl"
 		url = None
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 4
+		# Invalid inputs 4
 
 		set_name = "Graves Jgl"
 		url = int()
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.OpggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 class ChampionggTest(unittest.TestCase):
 	def test_translator(self):
-		self._translator = itemsetcopier.ChampionggTranslator()
-
 		# Valid inputs
 
 		set_name = "Jinx ADC"
 		url = "https://champion.gg/champion/Jinx/ADC"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 
@@ -298,24 +234,25 @@ class ChampionggTest(unittest.TestCase):
 		set_name = "t" * (itemsetcopier.SET_NAME_MAX_LENGTH + 1)
 		url = "https://champion.gg/champion/Jinx/ADC"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_SET_NAME_MAX_LENGTH)
 
 
-		# Invalid URL #1
+		# Invalid URL 1
 
 		set_name = "Jinx ADC"
 		url = "https://google.com"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_URL)
 
-		# Invalid URL #2
+
+		# Invalid URL 2
 
 		set_name = "Jinx ADC"
 		url = "https://champion.gg/champion/Jinx/tttttttttttttttttttttt"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_URL)
 
 		# Invalid champion
@@ -323,43 +260,43 @@ class ChampionggTest(unittest.TestCase):
 		set_name = "Jinx ADC"
 		url = "https://champion.gg/champion/tttttttttttttttttttttt/ADC"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_CHAMPION)
 
 
-		# Invalid input 1
+		# Invalid inputs 1
 
 		set_name = None
 		url = "https://champion.gg/champion/Jinx/ADC"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 2
+		# Invalid inputs 2
 
 		set_name = int()
 		url = "https://champion.gg/champion/Jinx/ADC"
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 3
+		# Invalid inputs 3
 
 		set_name = "Jinx ADC"
 		url = None
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
-		# Invalid input 4
+		# Invalid inputs 4
 
 		set_name = "Jinx ADC"
 		url = int()
 
-		res = self._translator.generate_item_set(set_name, url)
+		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 if __name__ == '__main__':
