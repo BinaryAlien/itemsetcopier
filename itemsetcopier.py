@@ -43,7 +43,7 @@ class Translator:
 		pass
 
 class MobafireTranslator(Translator):
-	REGEX = r'((http|https):\/\/)?(www\.)?mobafire\.com\/league-of-legends\/build\/[A-Za-z0-9-]+-[0-9]{6}'
+	REGEX = r'^((http|https):\/\/)?(www\.)?mobafire\.com\/league-of-legends\/build\/[A-Za-z0-9-]+-[0-9]{6}$'
 
 	@staticmethod
 	def _get_item_id(mobafire_name):
@@ -174,7 +174,7 @@ class MobafireTranslator(Translator):
 		}
 
 class MobalyticsTranslator(Translator):
-	REGEX = r'((http|https):\/\/)?app\.mobalytics\.gg\/champions\/[A-Za-z]+\/build'
+	REGEX = r'^((http|https):\/\/)?app\.mobalytics\.gg\/champions\/[A-Za-z]+\/build$'
 
 	@staticmethod
 	def generate_item_set(set_name=None, url=None, build_name=None, *args, **kwargs):
@@ -278,7 +278,7 @@ class MobalyticsTranslator(Translator):
 		return {'code': CODE_OK, 'item_set': item_set}
 
 class OpggTranslator(Translator):
-	REGEX = r'((http|https):\/\/)?((www|na)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)'
+	REGEX = r'^((http|https):\/\/)?((www|na)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)$'
 
 	@staticmethod
 	def generate_item_set(set_name=None, url=None, *args, **kwargs):
@@ -345,7 +345,7 @@ class OpggTranslator(Translator):
 		return {'code': CODE_OK, 'item_set': item_set}
 
 class ChampionggTranslator(Translator):
-	REGEX = r'((http|https):\/\/)?(www\.)?champion\.gg\/champion\/[A-Za-z]+\/(Top|Jungle|Middle|ADC|Support)'
+	REGEX = r'^((http|https):\/\/)?(www\.)?champion\.gg\/champion\/[A-Za-z]+\/(Top|Jungle|Middle|ADC|Support)$'
 
 	@staticmethod
 	def generate_item_set(set_name=None, url=None, *args, **kwargs):
