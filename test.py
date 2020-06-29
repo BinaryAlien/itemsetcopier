@@ -97,8 +97,9 @@ class MobalyticsTest(unittest.TestCase):
 
 		champion_name = "Ahri"
 		champion_key = None
+		role_name = "mid"
 
-		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 
@@ -106,25 +107,28 @@ class MobalyticsTest(unittest.TestCase):
 
 		champion_name = "LuX"
 		champion_key = None
+		role_name = "mid"
 
-		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 
 		# Valid inputs 3
 
 		champion_name = "does not matter if champion_key is given"
-		champion_key = 36
+		champion_key = 36 # Dr. Mundo
+		role_name = "top"
 
-		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_OK)
 
 		# Invalid inputs 1
 
 		champion_name = None
 		champion_key = None
+		role_name = "mid"
 
-		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
@@ -132,8 +136,9 @@ class MobalyticsTest(unittest.TestCase):
 
 		champion_name = int()
 		champion_key = None
+		role_name = "mid"
 
-		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 
@@ -141,8 +146,29 @@ class MobalyticsTest(unittest.TestCase):
 
 		champion_name = "does not matter if champion_key is given"
 		champion_key = str()
+		role_name = "mid"
 
-		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name)
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
+		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
+
+
+		# Invalid inputs 4
+
+		champion_name = "Lux"
+		champion_key = None
+		role_name = "jungle"
+
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
+		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
+
+
+		# Invalid inputs 5
+
+		champion_name = "Lux"
+		champion_key = None
+		role_name = "tttttttttttttttttttttt"
+
+		res = itemsetcopier.MobalyticsTranslator.generate_item_set(champion_key, champion_name, role_name)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_INVALID_INPUT)
 
 class OpggTest(unittest.TestCase):
@@ -254,6 +280,7 @@ class ChampionggTest(unittest.TestCase):
 
 		res = itemsetcopier.ChampionggTranslator.generate_item_set(set_name, url)
 		self.assertEqual(res['code'], itemsetcopier.CODE_ERROR_URL)
+
 
 		# Invalid champion
 

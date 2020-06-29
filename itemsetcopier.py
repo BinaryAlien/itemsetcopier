@@ -215,8 +215,17 @@ class MobafireTranslator(Translator):
 		}
 
 class MobalyticsTranslator(Translator):
+	ROLES = ('top', 'jungle', 'mid', 'adc', 'support')
+
 	@staticmethod
-	def generate_item_set(champion_key=None, champion_name=None, *args, **kwargs):
+	def generate_item_set(champion_key=None, champion_name=None, role_name=None, *args, **kwargs):
+		if role_name is None:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'role_name': {}".format("/".join(MobalyticsTranslator.ROLES))}
+		elif not isinstance(role_name, str):
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "role_name must be an str"}
+		elif not role_name in MobalyticsTranslator.ROLES:
+			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "role_name must be {}".format("/".join(MobalyticsTranslator.ROLES))}
+
 		if champion_key is None:
 			if champion_name is None:
 				return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify at least 'champion_key' or 'champion_name'"}
@@ -243,7 +252,7 @@ class MobalyticsTranslator(Translator):
 				for champion in champions()['data'].values():
 					if champion['key'] == champion_key_str:
 						valid = True
-						champion_name = champion['id']
+						champion_name = champion['name']
 						break
 			except RuntimeError:
 				return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
@@ -260,62 +269,64 @@ class MobalyticsTranslator(Translator):
 		item_sets = []
 
 		for role in mobalytics_data['data']['roles']:
-			for build in role['builds']:
+			if role['name'] == role_name:
+				for build in role['builds']:
+					blocks = []
 
-				blocks = []
+					for block_id, items in build['items']['general'].items():
+						block = {}
 
-				for block_id, items in build['items']['general'].items():
-					block = {}
+						if block_id == 'start':
+							block['type'] = "Starter"
+						elif block_id == 'early':
+							block['type'] = "Early items"
+						elif block_id == 'core':
+							block['type'] = "Core items"
+						elif block_id == 'full':
+							block['type'] = "Full build"
+						else:
+							block['type'] = "???"
 
-					if block_id == 'start':
-						block['type'] = "Starter"
-					elif block_id == 'early':
-						block['type'] = "Early items"
-					elif block_id == 'core':
-						block['type'] = "Core items"
-					elif block_id == 'full':
-						block['type'] = "Full build"
-					else:
-						block['type'] = "???"
+						block['showIfSummonerSpell'] = ""
+						block['hideIfSummonerSpell'] = ""
 
-					block['showIfSummonerSpell'] = ""
-					block['hideIfSummonerSpell'] = ""
+						counter = collections.Counter(items)
+						block['items'] = []
 
-					counter = collections.Counter(items)
-					block['items'] = []
+						for id_, count in dict(counter).items():
+							block['items'].append({'id': id_, 'count': count})
 
-					for id_, count in dict(counter).items():
-						block['items'].append({'id': id_, 'count': count})
+						if block_id == 'start':
+							blocks.insert(0, block)
+						else:
+							blocks.append(block)
 
-					if block_id == 'start':
-						blocks.insert(0, block)
-					else:
+					for situational in build['items']['situational']:
+						block = {}
+						block['type'] = "Situational - " + situational['name']
+						block['showIfSummonerSpell'] = ""
+						block['hideIfSummonerSpell'] = ""
+
+						counter = collections.Counter(situational['build'])
+						block['items'] = []
+
+						for id_, count in dict(counter).items():
+							block['items'].append({'id': id_, 'count': count})
+
 						blocks.append(block)
 
-				for situational in build['items']['situational']:
-					block = {}
-					block['type'] = "Situational - " + situational['name']
-					block['showIfSummonerSpell'] = ""
-					block['hideIfSummonerSpell'] = ""
+					item_set = {
+						'associatedChampions': [champion_key],
+						'associatedMaps': [],
+						'title': build['name'],
+						'blocks': blocks,
+					}
 
-					counter = collections.Counter(situational['build'])
-					block['items'] = []
+					item_sets.append(item_set)
 
-					for id_, count in dict(counter).items():
-						block['items'].append({'id': id_, 'count': count})
+				return {'code': CODE_OK, 'item_set': json.dumps(item_sets)}
 
-					blocks.append(block)
-
-				item_set = {
-					'associatedChampions': [champion_key],
-					'associatedMaps': [],
-					'title': build['name'],
-					'blocks': blocks,
-				}
-
-				item_sets.append(item_set)
-
-		return {'code': CODE_OK, 'item_set': json.dumps(item_sets)}
+		return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Champion '{}' does not have builds for role {}".format(champion_name, role_name)}
 
 class OpggTranslator(Translator):
 	REGEX = r'^((http|https):\/\/)?((www|na|euw)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)$'
@@ -356,7 +367,7 @@ class OpggTranslator(Translator):
 
 		blocks = []
 
-		for index, row in enumerate(rows):
+		for row in rows:
 			block = {}
 
 			# If this row is the first of a new category
