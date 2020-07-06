@@ -6,13 +6,15 @@ import requests
 
 SET_NAME_MAX_LENGTH = 75
 
-CODE_OK = 0x00
-CODE_ERROR_SET_NAME_MAX_LENGTH = 0x01
-CODE_ERROR_URL = 0x02
-CODE_ERROR_CHAMPION = 0x03
-CODE_ERROR_REMOTE = 0x04
-CODE_ERROR_CDN = 0x05
-CODE_ERROR_INVALID_INPUT = 0x06
+CODE_OK										= 0x00
+CODE_ERROR_PARAMETER						= 0x11 # Invalid parameter type/Non-optional parameter was not specified
+CODE_INVALID_SET_NAME_LENGTH				= 0x12 # Set name length is invalid
+CODE_INVALID_CHAMPION						= 0x13
+CODE_INVALID_ROLE							= 0x14 # Provided role is invalid
+CODE_REMOTE_FAIL							= 0x21 # The corresponding builds webserver did not answer as expected or the request failed
+CODE_REMOTE_FAIL_CDN						= 0x23 # The League of Legends' CDN did not respond
+CODE_SPECIAL_MOBAFIRE_INVALID_URL			= 0x31 # MOBAfire guide URL is invalid
+CODE_SPECIAL_MOBALYTICS_NO_BUILDS_FOR_ROLE	= 0x32 # No Mobalytics builds for the given role
 
 CLIENT_VERSION = '10.13.1' # League of Legends client's current version (might not be up-to-date)
 REQUEST_TIMEOUT = 10
@@ -59,14 +61,31 @@ def get_champion_key(champion_name):
 		Raises LookupError if the champion was not found
 	"""
 
-	if not champion_name:
-		raise LookupError
+	if not champion_name or not isinstance(champion_name, str):
+		raise ValueError("champion_name must be a str")
 
 	champion_name = champion_name.strip().lower()
 
 	for champion in champions()['data'].values():
 		if champion_name == champion['id'].lower() or champion_name == champion['name'].lower():
 			return int(champion['key'])
+
+	raise LookupError
+
+def get_champion_name(champion_key):
+	"""
+		Returns the name of the champion corresponding to the given key
+		Raises LookupError if the champion was not found
+	"""
+
+	if not champion_key or not isinstance(champion_key, int):
+		raise ValueError("champion_key must be an int")
+
+	champion_key = str(champion_key)
+
+	for champion in champions()['data'].values():
+		if champion['key'] == champion_key:
+			return champion['name']
 
 	raise LookupError
 
@@ -92,40 +111,43 @@ class MobafireTranslator(Translator):
 	@staticmethod
 	def generate_item_set(set_name=None, url=None, build_index=1, *args, **kwargs):
 		if set_name is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "set_name must be an str"}
+		elif len(set_name) < 1 or len(set_name) > SET_NAME_MAX_LENGTH:
+			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': f"The length of an item set's name must be between 1 and {SET_NAME_MAX_LENGTH} characters included"}
 		elif url is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'url'"}
 		elif not isinstance(url, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "url must be an str"}
+		elif not re.match(MobafireTranslator.REGEX, url):
+			return {'code': CODE_SPECIAL_MOBAFIRE_INVALID_URL, 'error': "Invalid MOBAfire guide URL"}
 		elif build_index is None:
 			build_index = 1
 		elif not isinstance(build_index, int):
 			try:
 				build_index = int(build_index)
 			except ValueError:
-				return {'code': CODE_ERROR_INVALID_INPUT, 'error': "build_index must be an int"}
-		elif len(set_name) > SET_NAME_MAX_LENGTH:
-			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-		elif not re.match(MobafireTranslator.REGEX, url):
-			return {'code': CODE_ERROR_URL, 'error': "Invalid MOBAfire guide URL"}
+				return {'code': CODE_ERROR_PARAMETER, 'error': "build_index must be an int"}
 
-		resp = requests.get(url)
+		try:
+			resp = requests.get(url)
+		except requests.exceptions.RequestException:
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given MOBAfire guide's webpage"}
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given MOBAfire guide's webpage. Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_REMOTE_FAIL, 'error': "Unexpected response from the given MOBAfire guide's webpage. Server returned status code " + str(resp.status_code)}
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 
-		champion_name = soup.find('div', class_='title').find('h3').text
+		champion_name = soup.find('div', class_='title').h3.text
 
 		try:
 			champion_key = get_champion_key(champion_name)
 		except LookupError:
-			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
+			return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
 		except RuntimeError:
-			return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+			return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
 		builds = soup.find_all('div', class_='view-guide__build')
 
@@ -176,19 +198,19 @@ class MobafireTranslator(Translator):
 							outdated_items.add(item_name)
 							continue
 						except RuntimeError:
-							return {'code': CODE_ERROR_CDN, 'error': "Could not retrive items data from League of Legends CDN"}
+							return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrive items data from the League of Legends CDN"}
 
 						# The jungle item's name (with corresponding enchantment)
 						jgl_enchantment = 'Enchantment: ' + jgl_enchantment.group()
 
-						for id_, item in items()['data'].items():
+						for id, item in items()['data'].items():
 							if item['name'] != jgl_enchantment:
 								continue
 
 							if item.get('from'):
 								# If the enchanted jungle item was made up the jungle item
 								if jgl_item_id in item['from']:
-									block['items'].append({'id': id_, 'count': count})
+									block['items'].append({'id': id, 'count': count})
 									break
 				else:
 					try:
@@ -197,7 +219,7 @@ class MobafireTranslator(Translator):
 						outdated_items.add(item_name)
 						continue
 					except RuntimeError:
-						return {'code': CODE_ERROR_CDN, 'error': "Could not retrive items data from League of Legends CDN"}
+						return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrive items data from League of Legends CDN"}
 
 			blocks.append(block)
 
@@ -218,59 +240,57 @@ class MobalyticsTranslator(Translator):
 	ROLES = ('top', 'jungle', 'mid', 'adc', 'support')
 
 	@staticmethod
-	def generate_item_set(champion_key=None, champion_name=None, role_name=None, *args, **kwargs):
-		if role_name is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'role_name': {}".format("/".join(MobalyticsTranslator.ROLES))}
-		elif not isinstance(role_name, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "role_name must be an str"}
-		elif not role_name in MobalyticsTranslator.ROLES:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "role_name must be {}".format("/".join(MobalyticsTranslator.ROLES))}
+	def generate_item_set(champion_key=None, champion_name=None, role=None, *args, **kwargs):
+		if role is None:
+			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'role': " + "/".join(MobalyticsTranslator.ROLES)}
+		elif not isinstance(role, str):
+			return {'code': CODE_ERROR_PARAMETER, 'error': "role must be an str"}
+
+		role = role.lower()
+
+		if not role in MobalyticsTranslator.ROLES:
+			return {'code': CODE_INVALID_ROLE, 'error': "role must be " + "/".join(MobalyticsTranslator.ROLES)}
 
 		if champion_key is None:
 			if champion_name is None:
-				return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify at least 'champion_key' or 'champion_name'"}
+				return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify at least 'champion_key' or 'champion_name'"}
 			elif not isinstance(champion_name, str):
-				return {'code': CODE_ERROR_INVALID_INPUT, 'error': "champion_name must be an str"}
+				return {'code': CODE_ERROR_PARAMETER, 'error': "champion_name must be an str"}
 			else:
 				try:
 					champion_key = get_champion_key(champion_name)
 				except LookupError:
-					return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
+					return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
 				except RuntimeError:
-					return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+					return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 		else:
 			if not isinstance(champion_key, int):
 				try:
 					champion_key = int(champion_key)
 				except ValueError:
-					return {'code': CODE_ERROR_INVALID_INPUT, 'error': "champion_key must be an int"}
-
-			valid = False
-			champion_key_str = str(champion_key)
+					return {'code': CODE_ERROR_PARAMETER, 'error': "champion_key must be an int"}
 
 			try:
-				for champion in champions()['data'].values():
-					if champion['key'] == champion_key_str:
-						valid = True
-						champion_name = champion['name']
-						break
+				champion_name = get_champion_name(champion_key)
+			except LookupError:
+				return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion with key '{champion_key}' not found"}
 			except RuntimeError:
-				return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
-			if not valid:
-				return {'code': CODE_ERROR_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
-
-		resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name})
+		try:
+			resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name})
+		except requests.exceptions.RequestException:
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the Mobalytics build's webpage"}
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given Mobalytics build's  Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given Mobalytics build's webpage. Server returned status code " + str(resp.status_code)}
 
 		mobalytics_data = resp.json()
 		item_sets = []
 
-		for role in mobalytics_data['data']['roles']:
-			if role['name'] == role_name:
-				for build in role['builds']:
+		for role_data in mobalytics_data['data']['roles']:
+			if role_data['name'] == role:
+				for build in role_data['builds']:
 					blocks = []
 
 					for block_id, items in build['items']['general'].items():
@@ -293,8 +313,8 @@ class MobalyticsTranslator(Translator):
 						counter = collections.Counter(items)
 						block['items'] = []
 
-						for id_, count in dict(counter).items():
-							block['items'].append({'id': id_, 'count': count})
+						for id, count in dict(counter).items():
+							block['items'].append({'id': id, 'count': count})
 
 						if block_id == 'start':
 							blocks.insert(0, block)
@@ -310,8 +330,8 @@ class MobalyticsTranslator(Translator):
 						counter = collections.Counter(situational['build'])
 						block['items'] = []
 
-						for id_, count in dict(counter).items():
-							block['items'].append({'id': id_, 'count': count})
+						for id, count in dict(counter).items():
+							block['items'].append({'id': id, 'count': count})
 
 						blocks.append(block)
 
@@ -326,65 +346,89 @@ class MobalyticsTranslator(Translator):
 
 				return {'code': CODE_OK, 'item_set': json.dumps(item_sets)}
 
-		return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Champion '{}' does not have builds for role {}".format(champion_name, role_name)}
+		return {'code': CODE_SPECIAL_MOBALYTICS_NO_BUILDS_FOR_ROLE, 'error': f"Champion '{champion_name}' does not have builds for role {role}"}
 
 class OpggTranslator(Translator):
-	REGEX = r'^((http|https):\/\/)?((www|na|euw)?\.)?op\.gg\/champion\/[A-Za-z]+\/statistics\/(top|jungle|mid|bot|support)$'
+	ROLES = ('top', 'jungle', 'mid', 'bot', 'support')
 
 	@staticmethod
-	def generate_item_set(set_name=None, url=None, *args, **kwargs):
+	def generate_item_set(set_name=None, champion_key=None, champion_name=None, role=None, *args, **kwargs):
 		if set_name is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
-		elif url is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
-		elif not isinstance(url, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
-		elif len(set_name) > SET_NAME_MAX_LENGTH:
-			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-		elif not re.match(OpggTranslator.REGEX, url):
-			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "set_name must be an str"}
+		elif len(set_name) < 1 or len(set_name) > SET_NAME_MAX_LENGTH:
+			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': f"The length of an item set's name must be between 1 and {SET_NAME_MAX_LENGTH} characters included"}
+		elif role is None:
+			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'role': " + "/".join(OpggTranslator.ROLES)}
+		elif not isinstance(role, str):
+			return {'code': CODE_ERROR_PARAMETER, 'error': "role must be an str"}
 
-		champion_name = url.split('/')[-3]
+		role = role.lower()
+
+		if not role in OpggTranslator.ROLES:
+			return {'code': CODE_INVALID_ROLE, 'error': "role must be " + "/".join(OpggTranslator.ROLES)}
+
+		if champion_key is None:
+			if champion_name is None:
+				return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify at least 'champion_key' or 'champion_name'"}
+			elif not isinstance(champion_name, str):
+				return {'code': CODE_ERROR_PARAMETER, 'error': "champion_name must be an str"}
+			else:
+				try:
+					champion_key = get_champion_key(champion_name)
+				except LookupError:
+					return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
+				except RuntimeError:
+					return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+		else:
+			if not isinstance(champion_key, int):
+				try:
+					champion_key = int(champion_key)
+				except ValueError:
+					return {'code': CODE_ERROR_PARAMETER, 'error': "champion_key must be an int"}
+
+			try:
+				champion_name = get_champion_name(champion_key)
+			except LookupError:
+				return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion with key '{champion_key}' not found"}
+			except RuntimeError:
+				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+
+		url = f"https://euw.op.gg/champion/{champion_name}/statistics/{role}"
 
 		try:
-			champion_key = get_champion_key(champion_name)
-		except LookupError:
-			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
-		except RuntimeError:
-			return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
-
-		resp = requests.get(url)
+			resp = requests.get(url)
+		except requests.exceptions.RequestException:
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given OP.GG build's webpage"}
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given OP.GG build's webpage. Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given OP.GG build's webpage. Server returned status code " + str(resp.status_code)}
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 		rows = soup.find_all('table', class_='champion-overview__table')[1].tbody.find_all('tr')
 
 		category_title = "???"
-
 		blocks = []
 
 		for row in rows:
 			block = {}
 
 			# If this row is the first of a new category
-			if len(row['class']) == 2 and row['class'][1] == 'champion-overview__row--first':
+			if 'champion-overview__row--first' in row['class']:
 				# We retrieve the category name
 				category_title = row.th.text
 
 			pick_rate = row.find('td', class_='champion-overview__stats--pick').strong.text
 
-			block['type'] = "{} ({} pick rate)".format(category_title, pick_rate)
+			block['type'] = f"{category_title} ({pick_rate} pick rate)"
 			block['showIfSummonerSpell'] = ""
 			block['hideIfSummonerSpell'] = ""
 			block['items'] = []
 
 			for item_li in row.find('td', class_=['champion-overview__data', 'champion-overview__border', 'champion-overview__border--first']).ul.find_all('li', class_=['champion-stats__list__item', 'tip']):
-				id_ = item_li.img['src'].split('/')[-1].split('.png')[0] # Extract item's ID from image's URL
-				block['items'].append({'id': id_, 'count': 1})
+				id = item_li.img['src'].split('/')[-1].split('.png')[0] # Extract item's ID from image's URL
+				block['items'].append({'id': id, 'count': 1})
 
 			blocks.append(block)
 
@@ -398,40 +442,65 @@ class OpggTranslator(Translator):
 		return {'code': CODE_OK, 'item_set': item_set}
 
 class ChampionggTranslator(Translator):
-	REGEX = r'^((http|https):\/\/)?(www\.)?champion\.gg\/champion\/[A-Za-z]+\/(Top|Jungle|Middle|ADC|Support)$'
+	ROLES = ('top', 'jungle', 'middle', 'adc', 'support')
 
 	@staticmethod
-	def generate_item_set(set_name=None, url=None, *args, **kwargs):
+	def generate_item_set(set_name=None, champion_key=None, champion_name=None, role=None, *args, **kwargs):
 		if set_name is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'set_name'"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'set_name'"}
 		elif not isinstance(set_name, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "set_name must be an str"}
-		elif url is None:
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "Must specify 'url'"}
-		elif not isinstance(url, str):
-			return {'code': CODE_ERROR_INVALID_INPUT, 'error': "url must be an str"}
-		elif len(set_name) > SET_NAME_MAX_LENGTH:
-			return {'code': CODE_ERROR_SET_NAME_MAX_LENGTH, 'error': "The maximum length of an item set's name is 75 characters"}
-		elif not re.match(ChampionggTranslator.REGEX, url):
-			return {'code': CODE_ERROR_URL, 'error': "Invalid OP.GG build URL"}
+			return {'code': CODE_ERROR_PARAMETER, 'error': "set_name must be an str"}
+		elif len(set_name) < 1 or len(set_name) > SET_NAME_MAX_LENGTH:
+			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': f"The length of an item set's name must be between 1 and {SET_NAME_MAX_LENGTH} characters included"}
+		elif role is None:
+			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'role': " + "/".join(ChampionggTranslator.ROLES)}
+		elif not isinstance(role, str):
+			return {'code': CODE_ERROR_PARAMETER, 'error': "role must be an str"}
 
-		champion_name = url.split('/')[-2]
+		role = role.lower()
+
+		if not role in ChampionggTranslator.ROLES:
+			return {'code': CODE_INVALID_ROLE, 'error': "role must be " + "/".join(ChampionggTranslator.ROLES)}
+
+		if champion_key is None:
+			if champion_name is None:
+				return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify at least 'champion_key' or 'champion_name'"}
+			elif not isinstance(champion_name, str):
+				return {'code': CODE_ERROR_PARAMETER, 'error': "champion_name must be an str"}
+			else:
+				try:
+					champion_key = get_champion_key(champion_name)
+				except LookupError:
+					return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
+				except RuntimeError:
+					return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+		else:
+			if not isinstance(champion_key, int):
+				try:
+					champion_key = int(champion_key)
+				except ValueError:
+					return {'code': CODE_ERROR_PARAMETER, 'error': "champion_key must be an int"}
+
+			try:
+				champion_name = get_champion_name(champion_key)
+			except LookupError:
+				return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion with key '{champion_key}' not found"}
+			except RuntimeError:
+				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
+
+		url = f'https://champion.gg/champion/{champion_name}/{role}'
 
 		try:
-			champion_key = get_champion_key(champion_name)
-		except LookupError:
-			return {'code': CODE_ERROR_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
-		except RuntimeError:
-			return {'code': CODE_ERROR_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
-
-		resp = requests.get(url)
+			resp = requests.get(url)
+		except requests.exceptions.RequestException:
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given Champion.GG build's webpage"}
 
 		if resp.status_code != 200:
-			return {'code': CODE_ERROR_REMOTE, 'error': "Could not reach the given Champion.GG build's webpage. Server returned status code {}".format(resp.status_code)}
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given Champion.GG build's webpage. Server returned status code " + str(resp.status_code)}
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 
-		sections = soup.find_all('div', class_='champion-area')[1].find_all('div', class_='col-xs-12 col-sm-12 col-md-6')[1].find_all('div', class_=['col-xs-12', 'col-sm-12'])
+		sections = soup.find_all('div', class_='champion-area')[1].find_all('div', class_=['col-xs-12', 'col-sm-12', 'col-md-6'])[1].find_all('div', class_=['col-xs-12', 'col-sm-12'])
 		sections.reverse()
 
 		blocks = []
@@ -448,8 +517,8 @@ class ChampionggTranslator(Translator):
 				block['items'] = []
 
 				for a in builds[i].find_all('a'):
-					id_ = a.img['src'].split('/')[-1].split('.png')[0] # Extract item's ID from image's URL
-					block['items'].append({'id': id_, 'count': 1})
+					id = a.img['src'].split('/')[-1].split('.png')[0] # Extract item's ID from image's URL
+					block['items'].append({'id': id, 'count': 1})
 
 				blocks.append(block)
 
