@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 import collections
 import json
 import re
@@ -130,8 +131,10 @@ class MobafireTranslator(Translator):
 			except ValueError:
 				return {'code': CODE_ERROR_PARAMETER, 'error': "build_index must be an int"}
 
+		url = urlparse(url, 'https')
+
 		try:
-			resp = requests.get(url)
+			resp = requests.get(url.scheme + '://' + url.netloc + url.path)
 		except requests.exceptions.RequestException:
 			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given MOBAfire guide's webpage"}
 

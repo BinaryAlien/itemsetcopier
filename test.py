@@ -14,6 +14,7 @@ class MobafireTest(unittest.TestCase):
 		self._test("Jax Jgl", 'https://www.mobafire.com/league-of-legends/build/10-13-ph45s-in-depth-guide-to-jax-the-grandmaster-503356', "2", itemsetcopier.CODE_OK)
 		self._test("Jax Jgl", 'https://www.mobafire.com/league-of-legends/build/10-13-ph45s-in-depth-guide-to-jax-the-grandmaster-503356', 99999, itemsetcopier.CODE_OK)
 		self._test("Jax Jgl", 'https://www.mobafire.com/league-of-legends/build/10-13-ph45s-in-depth-guide-to-jax-the-grandmaster-503356', -99999, itemsetcopier.CODE_OK)
+		self._test("Jax Top", 'www.mobafire.com/league-of-legends/build/10-13-ph45s-in-depth-guide-to-jax-the-grandmaster-503356', 1, itemsetcopier.CODE_OK)
 
 		# Invalid set name
 		self._test("", 'https://www.mobafire.com/league-of-legends/build/10-13-ph45s-in-depth-guide-to-jax-the-grandmaster-503356', 1, itemsetcopier.CODE_INVALID_SET_NAME_LENGTH)
