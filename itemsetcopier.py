@@ -12,24 +12,49 @@ CODE_ERROR_PARAMETER						= 0x11 # Invalid parameter type/Non-optional parameter
 CODE_INVALID_SET_NAME_LENGTH				= 0x12 # Set name length is invalid
 CODE_INVALID_CHAMPION						= 0x13
 CODE_INVALID_ROLE							= 0x14 # Provided role is invalid
-CODE_REMOTE_FAIL							= 0x21 # The corresponding builds webserver did not answer as expected or the request failed
+CODE_REMOTE_FAIL							= 0x21 # The corresponding builds webserver did not respond as expected or the request failed
 CODE_REMOTE_FAIL_CDN						= 0x23 # The League of Legends' CDN did not respond
 CODE_SPECIAL_MOBAFIRE_INVALID_URL			= 0x31 # MOBAfire guide URL is invalid
 CODE_SPECIAL_MOBALYTICS_NO_BUILDS_FOR_ROLE	= 0x32 # No Mobalytics builds for the given role
 
-CLIENT_VERSION = '10.13.1' # League of Legends client's current version (might not be up-to-date)
 REQUEST_TIMEOUT = 10
 
-cache = {'item': None, 'champion': None}
+cache = {'version': None, 'item': None, 'champion': None}
+
+def client_version():
+	try:
+		resp = requests.get('https://ddragon.leagueoflegends.com/api/versions.json', timeout=REQUEST_TIMEOUT)
+	except requests.exceptions.RequestException:
+		if cache['version']:
+			return cache['version']
+		else:
+			raise RuntimeError("could not retrieve latest version number from League of Legends CDN")
+
+	if resp.status_code != 200:
+		if cache['version']:
+			return cache['version']
+		else:
+			raise RuntimeError("could not retrieve latest version number from League of Legends CDN")
+
+	try:
+		versions = resp.json()
+		cache['version'] = versions[0]
+	except json.JSONDecodeError:
+		if not cache['version']:
+			raise RuntimeError("could not retrieve latest version number from League of Legends CDN")
+
+	return cache['version']
 
 def items():
+	version = client_version()
+
 	if not cache['item']:
 		try:
-			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/item.json', timeout=REQUEST_TIMEOUT)
+			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + version + '/data/en_US/item.json', timeout=REQUEST_TIMEOUT)
 		except requests.exceptions.RequestException:
 			raise RuntimeError("could not retrieve items data from League of Legends CDN")
 
-		if not resp.status_code == 200:
+		if resp.status_code != 200:
 			raise RuntimeError("could not retrieve items data from League of Legends CDN")
 
 		try:
@@ -40,13 +65,15 @@ def items():
 	return cache['item']
 
 def champions():
+	version = client_version()
+
 	if not cache['champion']:
 		try:
-			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + CLIENT_VERSION + '/data/en_US/champion.json', timeout=REQUEST_TIMEOUT)
+			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + version + '/data/en_US/champion.json', timeout=REQUEST_TIMEOUT)
 		except requests.exceptions.RequestException:
 			raise RuntimeError("could not retrieve champions data from League of Legends CDN")
 
-		if not resp.status_code == 200:
+		if resp.status_code != 200:
 			raise RuntimeError("could not retrieve champions data from League of Legends CDN")
 
 		try:
@@ -116,7 +143,7 @@ class MobafireTranslator(Translator):
 		elif not isinstance(set_name, str):
 			return {'code': CODE_ERROR_PARAMETER, 'error': "set_name must be an str"}
 		elif len(set_name) < 1 or len(set_name) > SET_NAME_MAX_LENGTH:
-			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': f"The length of an item set's name must be between 1 and {SET_NAME_MAX_LENGTH} characters included"}
+			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': "The length of an item set's name must be between 1 and {} characters included".format(SET_NAME_MAX_LENGTH)}
 		elif url is None:
 			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'url'"}
 		elif not isinstance(url, str):
@@ -148,7 +175,7 @@ class MobafireTranslator(Translator):
 		try:
 			champion_key = get_champion_key(champion_name)
 		except LookupError:
-			return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
+			return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 		except RuntimeError:
 			return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
@@ -263,7 +290,7 @@ class MobalyticsTranslator(Translator):
 				try:
 					champion_key = get_champion_key(champion_name)
 				except LookupError:
-					return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
+					return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 				except RuntimeError:
 					return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 		else:
@@ -276,7 +303,7 @@ class MobalyticsTranslator(Translator):
 			try:
 				champion_name = get_champion_name(champion_key)
 			except LookupError:
-				return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion with key '{champion_key}' not found"}
+				return {'code': CODE_INVALID_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
 			except RuntimeError:
 				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
@@ -349,7 +376,7 @@ class MobalyticsTranslator(Translator):
 
 				return {'code': CODE_OK, 'item_set': json.dumps(item_sets)}
 
-		return {'code': CODE_SPECIAL_MOBALYTICS_NO_BUILDS_FOR_ROLE, 'error': f"Champion '{champion_name}' does not have builds for role {role}"}
+		return {'code': CODE_SPECIAL_MOBALYTICS_NO_BUILDS_FOR_ROLE, 'error': "Champion '{}' does not have builds for role {}".format(champion_name, role)}
 
 class OpggTranslator(Translator):
 	ROLES = ('top', 'jungle', 'mid', 'bot', 'support')
@@ -361,7 +388,7 @@ class OpggTranslator(Translator):
 		elif not isinstance(set_name, str):
 			return {'code': CODE_ERROR_PARAMETER, 'error': "set_name must be an str"}
 		elif len(set_name) < 1 or len(set_name) > SET_NAME_MAX_LENGTH:
-			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': f"The length of an item set's name must be between 1 and {SET_NAME_MAX_LENGTH} characters included"}
+			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': "The length of an item set's name must be between 1 and {} characters included".format(SET_NAME_MAX_LENGTH)}
 		elif role is None:
 			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'role': " + "/".join(OpggTranslator.ROLES)}
 		elif not isinstance(role, str):
@@ -381,7 +408,7 @@ class OpggTranslator(Translator):
 				try:
 					champion_key = get_champion_key(champion_name)
 				except LookupError:
-					return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
+					return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 				except RuntimeError:
 					return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 		else:
@@ -394,11 +421,11 @@ class OpggTranslator(Translator):
 			try:
 				champion_name = get_champion_name(champion_key)
 			except LookupError:
-				return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion with key '{champion_key}' not found"}
+				return {'code': CODE_INVALID_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
 			except RuntimeError:
 				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
-		url = f"https://euw.op.gg/champion/{champion_name}/statistics/{role}"
+		url = "https://euw.op.gg/champion/{}/statistics/{}".format(champion_name, role)
 
 		try:
 			resp = requests.get(url)
@@ -424,7 +451,7 @@ class OpggTranslator(Translator):
 
 			pick_rate = row.find('td', class_='champion-overview__stats--pick').strong.text
 
-			block['type'] = f"{category_title} ({pick_rate} pick rate)"
+			block['type'] = category_title + " (" + pick_rate + " pick rate)"
 			block['showIfSummonerSpell'] = ""
 			block['hideIfSummonerSpell'] = ""
 			block['items'] = []
@@ -454,7 +481,7 @@ class ChampionggTranslator(Translator):
 		elif not isinstance(set_name, str):
 			return {'code': CODE_ERROR_PARAMETER, 'error': "set_name must be an str"}
 		elif len(set_name) < 1 or len(set_name) > SET_NAME_MAX_LENGTH:
-			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': f"The length of an item set's name must be between 1 and {SET_NAME_MAX_LENGTH} characters included"}
+			return {'code': CODE_INVALID_SET_NAME_LENGTH, 'error': "The length of an item set's name must be between 1 and {} characters included".format(SET_NAME_MAX_LENGTH)}
 		elif role is None:
 			return {'code': CODE_ERROR_PARAMETER, 'error': "Must specify 'role': " + "/".join(ChampionggTranslator.ROLES)}
 		elif not isinstance(role, str):
@@ -474,7 +501,7 @@ class ChampionggTranslator(Translator):
 				try:
 					champion_key = get_champion_key(champion_name)
 				except LookupError:
-					return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion not found: '{champion_name}'"}
+					return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 				except RuntimeError:
 					return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 		else:
@@ -487,11 +514,11 @@ class ChampionggTranslator(Translator):
 			try:
 				champion_name = get_champion_name(champion_key)
 			except LookupError:
-				return {'code': CODE_INVALID_CHAMPION, 'error': f"Champion with key '{champion_key}' not found"}
+				return {'code': CODE_INVALID_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
 			except RuntimeError:
 				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
-		url = f'https://champion.gg/champion/{champion_name}/{role}'
+		url = 'https://champion.gg/champion/{}/{}'.format(champion_name, role)
 
 		try:
 			resp = requests.get(url)
