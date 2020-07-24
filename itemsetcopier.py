@@ -7,15 +7,15 @@ import requests
 
 SET_NAME_MAX_LENGTH = 75
 
-CODE_OK										= 0x00
-CODE_ERROR_PARAMETER						= 0x11 # Invalid parameter type/Non-optional parameter was not specified
-CODE_INVALID_SET_NAME_LENGTH				= 0x12 # Set name length is invalid
-CODE_INVALID_CHAMPION						= 0x13
-CODE_INVALID_ROLE							= 0x14 # Provided role is invalid
-CODE_REMOTE_FAIL							= 0x21 # The corresponding builds webserver did not respond as expected or the request failed
-CODE_REMOTE_FAIL_CDN						= 0x23 # The League of Legends' CDN did not respond
-CODE_SPECIAL_MOBAFIRE_INVALID_URL			= 0x31 # MOBAfire guide URL is invalid
-CODE_SPECIAL_MOBALYTICS_NO_BUILDS_FOR_ROLE	= 0x32 # No Mobalytics builds for the given role
+CODE_OK								= 0x00
+CODE_ERROR_PARAMETER				= 0x11 # Invalid parameter type/Non-optional parameter was not specified
+CODE_INVALID_SET_NAME_LENGTH		= 0x12 # Set name length is invalid
+CODE_INVALID_CHAMPION				= 0x13
+CODE_INVALID_ROLE					= 0x14 # Provided role is invalid
+CODE_REMOTE_FAIL					= 0x21 # The corresponding builds webserver did not respond as expected or the request failed
+CODE_REMOTE_FAIL_CDN				= 0x23 # The League of Legends' CDN did not respond
+CODE_SPECIAL_MOBAFIRE_INVALID_URL	= 0x31 # MOBAfire guide URL is invalid
+CODE_SPECIAL_NO_BUILDS				= 0x32 # No builds for the given champion/role
 
 REQUEST_TIMEOUT = 10
 
@@ -305,10 +305,12 @@ class MobalyticsTranslator(Translator):
 		try:
 			resp = requests.get('https://api.mobalytics.gg/lol/champions/v1/meta', params={'name': champion_name})
 		except requests.exceptions.RequestException:
-			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the Mobalytics build's webpage"}
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the Mobalytics build's data"}
 
-		if resp.status_code != 200:
-			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given Mobalytics build's webpage. Server returned status code " + str(resp.status_code)}
+		if resp.status_code == 404:
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given Mobalytics build's data. Server returned status code 404 (there may be no Mobalytics builds for this champion yet)"}
+		elif resp.status_code != 200:
+			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given Mobalytics build's data. Server returned status code " + str(resp.status_code)}
 
 		mobalytics_data = resp.json()
 		item_sets = []
@@ -371,7 +373,7 @@ class MobalyticsTranslator(Translator):
 
 				return {'code': CODE_OK, 'item_set': json.dumps(item_sets)}
 
-		return {'code': CODE_SPECIAL_MOBALYTICS_NO_BUILDS_FOR_ROLE, 'error': "Champion '{}' does not have builds for role {}".format(champion_name, role)}
+		return {'code': CODE_SPECIAL_NO_BUILDS, 'error': "Champion '{}' does not have builds for role {}".format(champion_name, role)}
 
 class OpggTranslator(Translator):
 	ROLES = ('top', 'jungle', 'mid', 'bot', 'support')
@@ -429,6 +431,8 @@ class OpggTranslator(Translator):
 
 		if resp.status_code != 200:
 			return {'code': CODE_REMOTE_FAIL, 'error': "Could not reach the given OP.GG build's webpage. Server returned status code " + str(resp.status_code)}
+		elif resp.history and resp.url != url:
+			return {'code': CODE_SPECIAL_NO_BUILDS, 'error': "Champion '{}' does not have builds for role {}/does not have any builds yet".format(champion_name, role)}
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 		rows = soup.find_all('table', class_='champion-overview__table')[1].tbody.find_all('tr')
