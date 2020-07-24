@@ -22,33 +22,28 @@ REQUEST_TIMEOUT = 10
 cache = {'version': None, 'item': None, 'champion': None}
 
 def client_version():
-	try:
-		resp = requests.get('https://ddragon.leagueoflegends.com/api/versions.json', timeout=REQUEST_TIMEOUT)
-	except requests.exceptions.RequestException:
-		if cache['version']:
-			return cache['version']
-		else:
+	if not cache['version']:
+		try:
+			resp = requests.get('https://ddragon.leagueoflegends.com/api/versions.json', timeout=REQUEST_TIMEOUT)
+		except requests.exceptions.RequestException:
 			raise RuntimeError("could not retrieve latest version number from League of Legends CDN")
 
-	if resp.status_code != 200:
-		if cache['version']:
-			return cache['version']
-		else:
+		if resp.status_code != 200:
 			raise RuntimeError("could not retrieve latest version number from League of Legends CDN")
 
-	try:
-		versions = resp.json()
+		try:
+			versions = resp.json()
+		except json.JSONDecodeError:
+			raise RuntimeError("could not retrieve latest version number from League of Legends CDN")
+
 		cache['version'] = versions[0]
-	except json.JSONDecodeError:
-		if not cache['version']:
-			raise RuntimeError("could not retrieve latest version number from League of Legends CDN")
 
 	return cache['version']
 
 def items():
-	version = client_version()
-
 	if not cache['item']:
+		version = client_version()
+
 		try:
 			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + version + '/data/en_US/item.json', timeout=REQUEST_TIMEOUT)
 		except requests.exceptions.RequestException:
@@ -65,9 +60,9 @@ def items():
 	return cache['item']
 
 def champions():
-	version = client_version()
-
 	if not cache['champion']:
+		version = client_version()
+
 		try:
 			resp = requests.get('https://ddragon.leagueoflegends.com/cdn/' + version + '/data/en_US/champion.json', timeout=REQUEST_TIMEOUT)
 		except requests.exceptions.RequestException:
