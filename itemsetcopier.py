@@ -165,7 +165,14 @@ class MobafireTranslator(Translator):
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 
-		champion_name = soup.find('title').text.split(' ')[0]
+		title = soup.find('title').text.split(' ')
+		champion_name = ''
+
+		for word in title:
+			if word == 'Build':
+				break
+
+			champion_name += ' ' + word
 
 		try:
 			champion_key = get_champion_key(champion_name)
