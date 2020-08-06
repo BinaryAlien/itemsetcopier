@@ -165,7 +165,7 @@ class MobafireTranslator(Translator):
 
 		soup = BeautifulSoup(resp.text, 'html.parser')
 
-		champion_name = soup.find('div', class_='title').h3.text
+		champion_name = soup.find('title').text.split(' ')[0]
 
 		try:
 			champion_key = get_champion_key(champion_name)
