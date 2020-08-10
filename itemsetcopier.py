@@ -78,12 +78,7 @@ def champions():
 
 	return cache['champion']
 
-def get_champion_key(champion_name):
-	"""
-		Matches a champion name to it's corresponding ID
-		Raises LookupError if the champion was not found
-	"""
-
+def get_champion_by_name(champion_name):
 	if not champion_name or not isinstance(champion_name, str):
 		raise ValueError("champion_name must be a str")
 
@@ -91,24 +86,24 @@ def get_champion_key(champion_name):
 
 	for champion in champions()['data'].values():
 		if champion_name == champion['id'].lower() or champion_name == champion['name'].lower():
-			return int(champion['key'])
+			return champion
 
 	raise LookupError
 
-def get_champion_name(champion_key):
+def get_champion_by_key(champion_key):
 	"""
-		Returns the name of the champion corresponding to the given key
+		Returns a champion's data by it's key
 		Raises LookupError if the champion was not found
 	"""
 
 	if not champion_key or not isinstance(champion_key, int):
-		raise ValueError("champion_key must be an int")
+		raise ValueError("champion_name must be a str")
 
 	champion_key = str(champion_key)
 
 	for champion in champions()['data'].values():
-		if champion['key'] == champion_key:
-			return champion['name']
+		if champion_key == champion['key']:
+			return champion
 
 	raise LookupError
 
@@ -175,7 +170,7 @@ class MobafireTranslator(Translator):
 			champion_name += ' ' + word
 
 		try:
-			champion_key = get_champion_key(champion_name)
+			champion_key = int(get_champion_by_name(champion_name)['key'])
 		except LookupError:
 			return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 		except RuntimeError:
@@ -290,7 +285,7 @@ class MobalyticsTranslator(Translator):
 				return {'code': CODE_ERROR_PARAMETER, 'error': "champion_name must be an str"}
 			else:
 				try:
-					champion_key = get_champion_key(champion_name)
+					champion_key = int(get_champion_by_name(champion_name)['key'])
 				except LookupError:
 					return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 				except RuntimeError:
@@ -303,7 +298,7 @@ class MobalyticsTranslator(Translator):
 					return {'code': CODE_ERROR_PARAMETER, 'error': "champion_key must be an int"}
 
 			try:
-				champion_name = get_champion_name(champion_key)
+				champion_name = get_champion_by_key(champion_key)['name']
 			except LookupError:
 				return {'code': CODE_INVALID_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
 			except RuntimeError:
@@ -410,7 +405,7 @@ class OpggTranslator(Translator):
 				return {'code': CODE_ERROR_PARAMETER, 'error': "champion_name must be an str"}
 			else:
 				try:
-					champion_key = get_champion_key(champion_name)
+					champion_key = int(get_champion_by_name(champion_name)['key'])
 				except LookupError:
 					return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 				except RuntimeError:
@@ -423,7 +418,7 @@ class OpggTranslator(Translator):
 					return {'code': CODE_ERROR_PARAMETER, 'error': "champion_key must be an int"}
 
 			try:
-				champion_name = get_champion_name(champion_key)
+				champion_name = get_champion_by_key(champion_key)['name']
 			except LookupError:
 				return {'code': CODE_INVALID_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
 			except RuntimeError:
@@ -478,7 +473,7 @@ class OpggTranslator(Translator):
 		return {'code': CODE_OK, 'item_set': item_set}
 
 class ChampionggTranslator(Translator):
-	ROLES = ('top', 'jungle', 'middle', 'adc', 'support')
+	ROLES = ('Top', 'Jungle', 'Middle', 'ADC', 'support')
 
 	@staticmethod
 	def generate_item_set(set_name=None, champion_key=None, champion_name=None, role=None, *args, **kwargs):
@@ -493,8 +488,6 @@ class ChampionggTranslator(Translator):
 		elif not isinstance(role, str):
 			return {'code': CODE_ERROR_PARAMETER, 'error': "role must be an str"}
 
-		role = role.lower()
-
 		if not role in ChampionggTranslator.ROLES:
 			return {'code': CODE_INVALID_ROLE, 'error': "role must be " + "/".join(ChampionggTranslator.ROLES)}
 
@@ -505,7 +498,8 @@ class ChampionggTranslator(Translator):
 				return {'code': CODE_ERROR_PARAMETER, 'error': "champion_name must be an str"}
 			else:
 				try:
-					champion_key = get_champion_key(champion_name)
+					champion = get_champion_by_name(champion_name)
+					champion_key = int(champion['key'])
 				except LookupError:
 					return {'code': CODE_INVALID_CHAMPION, 'error': "Champion not found: '{}'".format(champion_name)}
 				except RuntimeError:
@@ -518,13 +512,13 @@ class ChampionggTranslator(Translator):
 					return {'code': CODE_ERROR_PARAMETER, 'error': "champion_key must be an int"}
 
 			try:
-				champion_name = get_champion_name(champion_key)
+				champion = get_champion_by_key(champion_key)
 			except LookupError:
 				return {'code': CODE_INVALID_CHAMPION, 'error': "Champion with key '{}' not found".format(champion_key)}
 			except RuntimeError:
 				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
-		url = 'https://champion.gg/champion/{}/{}'.format(champion_name, role)
+		url = 'https://champion.gg/champion/{}/{}'.format(champion['id'], role)
 
 		try:
 			resp = requests.get(url)

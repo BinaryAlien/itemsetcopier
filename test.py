@@ -105,30 +105,30 @@ class ChampionggTest(unittest.TestCase):
 
 	def test_translator(self):
 		# Valid inputs
-		self._test("Graves Jgl", None, 'Graves', 'jungle', itemsetcopier.CODE_OK)
-		self._test("Graves Jgl", 104, None, 'jungle', itemsetcopier.CODE_OK)
-		self._test("Graves Jgl", 104, 'Doesnt matter here', 'jungle', itemsetcopier.CODE_OK)
-		self._test("Graves Jgl", "104", None, 'jungle', itemsetcopier.CODE_OK)
-		self._test("Graves Jgl", "104", 'Doesnt matter here', 'jungle', itemsetcopier.CODE_OK)
+		self._test("Graves Jgl", None, 'Graves', 'Jungle', itemsetcopier.CODE_OK)
+		self._test("Graves Jgl", 104, None, 'Jungle', itemsetcopier.CODE_OK)
+		self._test("Graves Jgl", 104, 'Doesnt matter here', 'Jungle', itemsetcopier.CODE_OK)
+		self._test("Graves Jgl", "104", None, 'Jungle', itemsetcopier.CODE_OK)
+		self._test("Graves Jgl", "104", 'Doesnt matter here', 'Jungle', itemsetcopier.CODE_OK)
 
 		# Invalid set name
-		self._test("", None, 'Graves', 'jungle', itemsetcopier.CODE_INVALID_SET_NAME_LENGTH)
-		self._test(('t' * (itemsetcopier.SET_NAME_MAX_LENGTH + 1)), None, 'Graves', 'jungle', itemsetcopier.CODE_INVALID_SET_NAME_LENGTH)
+		self._test("", None, 'Graves', 'Jungle', itemsetcopier.CODE_INVALID_SET_NAME_LENGTH)
+		self._test(('t' * (itemsetcopier.SET_NAME_MAX_LENGTH + 1)), None, 'Graves', 'Jungle', itemsetcopier.CODE_INVALID_SET_NAME_LENGTH)
 
 		# Invalid champion
-		self._test("Graves Jgl", None, 'ttttt', 'jungle', itemsetcopier.CODE_INVALID_CHAMPION)
-		self._test("Graves Jgl", 99999, None, 'jungle', itemsetcopier.CODE_INVALID_CHAMPION)
-		self._test("Graves Jgl", 99999, 'Graves', 'jungle', itemsetcopier.CODE_INVALID_CHAMPION)
+		self._test("Graves Jgl", None, 'ttttt', 'Jungle', itemsetcopier.CODE_INVALID_CHAMPION)
+		self._test("Graves Jgl", 99999, None, 'Jungle', itemsetcopier.CODE_INVALID_CHAMPION)
+		self._test("Graves Jgl", 99999, 'Graves', 'Jungle', itemsetcopier.CODE_INVALID_CHAMPION)
 
 		# Invalid role
 		self._test("Graves Jgl", 'Graves', None, 'ttttt', itemsetcopier.CODE_INVALID_ROLE)
 
 		# Other
-		self._test(None, 'Graves', None, 'jungle', itemsetcopier.CODE_ERROR_PARAMETER)
-		self._test(123, 'Graves', None, 'jungle', itemsetcopier.CODE_ERROR_PARAMETER)
-		self._test("Graves Jgl", "abc", None, 'jungle', itemsetcopier.CODE_ERROR_PARAMETER)
-		self._test("Graves Jgl", None, 123, 'jungle', itemsetcopier.CODE_ERROR_PARAMETER)
-		self._test("Graves Jgl", None, None, 'jungle', itemsetcopier.CODE_ERROR_PARAMETER)
+		self._test(None, 'Graves', None, 'Jungle', itemsetcopier.CODE_ERROR_PARAMETER)
+		self._test(123, 'Graves', None, 'Jungle', itemsetcopier.CODE_ERROR_PARAMETER)
+		self._test("Graves Jgl", "abc", None, 'Jungle', itemsetcopier.CODE_ERROR_PARAMETER)
+		self._test("Graves Jgl", None, 123, 'Jungle', itemsetcopier.CODE_ERROR_PARAMETER)
+		self._test("Graves Jgl", None, None, 'Jungle', itemsetcopier.CODE_ERROR_PARAMETER)
 		self._test("Graves Jgl", None, 'Graves', 123, itemsetcopier.CODE_ERROR_PARAMETER)
 		self._test("Graves Jgl", None, 'Graves', None, itemsetcopier.CODE_ERROR_PARAMETER)
 
