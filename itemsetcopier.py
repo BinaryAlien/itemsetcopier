@@ -473,7 +473,7 @@ class OpggTranslator(Translator):
 		return {'code': CODE_OK, 'item_set': item_set}
 
 class ChampionggTranslator(Translator):
-	ROLES = ('Top', 'Jungle', 'Middle', 'ADC', 'support')
+	ROLES = ('Top', 'Jungle', 'Middle', 'ADC', 'Support')
 
 	@staticmethod
 	def generate_item_set(set_name=None, champion_key=None, champion_name=None, role=None, *args, **kwargs):
