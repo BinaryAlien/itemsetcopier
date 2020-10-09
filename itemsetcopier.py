@@ -424,7 +424,7 @@ class OpggTranslator(Translator):
 			except RuntimeError:
 				return {'code': CODE_REMOTE_FAIL_CDN, 'error': "Could not retrieve champions data from the League of Legends CDN"}
 
-		url = "https://euw.op.gg/champion/{}/statistics/{}".format(champion_name, role)
+		url = "https://www.op.gg/champion/{}/statistics/{}".format(champion_name, role)
 
 		try:
 			resp = requests.get(url)
