@@ -7,15 +7,15 @@ import requests
 
 SET_NAME_MAX_LENGTH = 75
 
-CODE_OK								= 0x00
-CODE_ERROR_PARAMETER				= 0x11 # Invalid parameter type/Non-optional parameter was not specified
-CODE_INVALID_SET_NAME_LENGTH		= 0x12 # Set name length is invalid
-CODE_INVALID_CHAMPION				= 0x13
-CODE_INVALID_ROLE					= 0x14 # Provided role is invalid
-CODE_REMOTE_FAIL					= 0x21 # The corresponding builds webserver did not respond as expected or the request failed
-CODE_REMOTE_FAIL_CDN				= 0x23 # The League of Legends' CDN did not respond
-CODE_SPECIAL_MOBAFIRE_INVALID_URL	= 0x31 # MOBAfire guide URL is invalid
-CODE_SPECIAL_NO_BUILDS				= 0x32 # No builds for the given champion/role
+CODE_OK                             = 0x00
+CODE_ERROR_PARAMETER                = 0x11 # Invalid parameter type/Non-optional parameter was not specified
+CODE_INVALID_SET_NAME_LENGTH        = 0x12 # Set name length is invalid
+CODE_INVALID_CHAMPION               = 0x13
+CODE_INVALID_ROLE                   = 0x14 # Provided role is invalid
+CODE_REMOTE_FAIL                    = 0x21 # The corresponding builds webserver did not respond as expected or the request failed
+CODE_REMOTE_FAIL_CDN                = 0x23 # The League of Legends' CDN did not respond
+CODE_SPECIAL_MOBAFIRE_INVALID_URL   = 0x31 # MOBAfire guide URL is invalid
+CODE_SPECIAL_NO_BUILDS              = 0x32 # No builds for the given champion/role
 
 REQUEST_TIMEOUT = 10
 

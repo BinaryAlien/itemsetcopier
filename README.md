@@ -1,7 +1,7 @@
 # itemsetcopier
 
 ## Description
-Simple Python API that lets you translate online builds from popular League of Legends builds websites (such as MOBAfire, Mobalytics, OP.GG, ...) into clipboard imports. Thus you will be able to quickly copy online item builds into the game without any effort.
+Simple Python library that lets you translate online builds from popular League of Legends builds websites (such as MOBAfire, Mobalytics, OP.GG, ...) into clipboard imports. Thus you will be able to quickly copy online item builds into the game without any effort.
 
 ## Prerequisites
 
