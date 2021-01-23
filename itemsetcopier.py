@@ -1,5 +1,5 @@
 from bs4 import BeautifulSoup
-from enum import Enum
+from enum import IntEnum
 from urllib.parse import urlparse
 from time import time
 import aiohttp
@@ -19,14 +19,14 @@ REQUEST_TIMEOUT    = 10    # in seconds
 DATA_REFRESH_DELAY = 86400 # in seconds
 
 
-class Translator(Enum):
+class Translator(IntEnum):
 	MOBAFIRE =   0
 	MOBALYTICS = 1
 	OPGG =       2
 	CHAMPIONGG = 3
 
 
-class ReturnCode(Enum):
+class ReturnCode(IntEnum):
 	CODE_OK               = 0x00
 	ERR_INVALID_PARAM     = 0x01 # Invalid parameter type/Non-optional parameter was not specified
 	ERR_SET_NAME_LENGTH   = 0x02 # Set name length is invalid
